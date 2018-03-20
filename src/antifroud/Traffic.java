@@ -10,6 +10,26 @@ public class Traffic {
 
     /**
      * 
+     * @param id
+     * @param contract_id
+     * @param interzone
+     * @param intercity
+     * @param international
+     * @param day
+     * @param status 
+     */
+    Traffic(int id, int contract_id, int interzone, int intercity, int international, Date day, boolean status) {
+        this.id = id;
+        this.contract_id = contract_id;
+        this.interzone = interzone;
+        this.intercity = intercity;
+        this.international = international;
+        this.day = day;
+        this.status = status;
+    }
+    
+    /**
+     * 
      */
     private int id;
 

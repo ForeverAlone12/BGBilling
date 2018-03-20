@@ -50,7 +50,6 @@ public class Antifroud extends GlobalScriptBase {
         ResultSet rs = ps.executeQuery();
 
         while (rs.next()) {
-
             int id = rs.getInt("id");
             int contract_id = rs.getInt("contract_id");
             int interzone = rs.getInt("interzone");
@@ -58,6 +57,7 @@ public class Antifroud extends GlobalScriptBase {
             int international = rs.getInt("international");
             Date day = rs.getDate("day");
             boolean status = rs.getBoolean("status");
+            traffic.add(new Traffic(id, contract_id, interzone, intercity, international, day, status));
         }
 
         // вызов функции, которая возвращает звонки в виде 
@@ -84,6 +84,7 @@ public class Antifroud extends GlobalScriptBase {
                 int contract_id = rs.getInt("contract_id");
                 String categories = rs.getString("???"); // ?????????????
                 int session_time = rs.getInt("???");
+                calls.add(new Calls(contract_id, categories, session_time));
             }
         } catch (SQLException e) {
             print("Не удалось извлечь данные");
@@ -91,9 +92,10 @@ public class Antifroud extends GlobalScriptBase {
             logger.error(e.getMessage(), e);
         }
 
+        // определение превышения трафика
         for (int i = 0; i < calls.size(); i++) {
             for (int j = 0; j < traffic.size(); j++) {
-                if (calls.get(i))
+
             }
         }
 

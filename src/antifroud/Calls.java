@@ -2,9 +2,21 @@ package antifroud;
 
 /**
  *
- * @author 
+ * @author
  */
 public class Calls {
+
+    /**
+     * 
+     * @param contract_id
+     * @param categories
+     * @param session_time 
+     */
+    Calls(int contract_id, String categories, int session_time) {
+        this.cotract_id = contract_id;
+        this.categories = categories;
+        this.session_time = session_time;
+    }
     /**
      * Номер договора
      */
@@ -13,7 +25,7 @@ public class Calls {
      * Категории звонка
      */
     private String categories;
-    
+
     /**
      * Продолжительность звонка
      */
