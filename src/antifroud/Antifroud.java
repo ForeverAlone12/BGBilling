@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 
 import java.util.Date;
+import java.util.HashMap;
 import ru.bitel.bgbilling.kernel.script.server.dev.GlobalScriptBase;
 import ru.bitel.bgbilling.server.util.Setup;
 import ru.bitel.common.sql.ConnectionSet;
@@ -41,12 +42,14 @@ public class Antifroud extends GlobalScriptBase {
         Connection con = connectionSet.getConnection();
 
         // считывание данных о звонках за день
-        ArrayList<Traffic> traffic = new ArrayList<>();
-        String query = "SELECT *"
-                + "From traffic"
-                + "WHERE status not false" // ???????????
+        HashMap<Integer, Traffic> traffic = new HashMap<>();
+        String query = "SELECT id, contract_id, interzone, international, day, status"
+                + "From ?"
+                + "WHERE status = false"
                 + "GROUP BY contract_id";
         PreparedStatement ps = con.prepareStatement(query);
+        ps.setString(0, "traffic");
+
         ResultSet rs = ps.executeQuery();
 
         while (rs.next()) {
@@ -57,7 +60,7 @@ public class Antifroud extends GlobalScriptBase {
             int international = rs.getInt("international");
             Date day = rs.getDate("day");
             boolean status = rs.getBoolean("status");
-            traffic.add(new Traffic(id, contract_id, interzone, intercity, international, day, status));
+            traffic.put(contract_id, new Traffic(id, contract_id, interzone, intercity, international, day, status));
         }
 
         // вызов функции, которая возвращает звонки в виде 
@@ -67,7 +70,20 @@ public class Antifroud extends GlobalScriptBase {
         // 2) по каккой период производится выборка
         // 3) имя таблицы, из которой производится выборка
         ArrayList<Calls> calls = new ArrayList<>();
-        query = "CALL getCalls(?,?,?)";
+        query = "SELECT calls.cid, calls.category, sum(calls.round_session_time) as time"
+                + "FROM (SELECT "
+                + "s.id,"
+                + "s.cid,"
+                + "s.from_number_164 `from`,"
+                + "s.to_number_164 number,"
+                + "s.round_session_time,"
+                + "IF (s.to_number_164 LIKE '8%', 'Международная',"
+                + "IF (SUBSTR(s.to_number_164,1,3)=SUBSTR(s.from_number_164,1,3),'Внутризоновые','Междугородние')"
+                + ") category"
+                + "FROM log_session_18_201708_fraud s"
+                + "WHERE s.session_start BETWEEN ? AND ?"
+                + "LIMIT 10000) calls"
+                + "GROUP BY calls.cid, calls.category;";
         ps = con.prepareStatement(query);
         rs = ps.executeQuery();
 
@@ -77,13 +93,13 @@ public class Antifroud extends GlobalScriptBase {
 
             ps.setTimestamp(1, TimeUtils.convertCalendarToTimestamp(from));
             ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(to));
-            ps.setString(3, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), 0));
+            ps.setString(3, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), 18));
 
             rs = ps.executeQuery();
             while (rs.next()) {
                 int contract_id = rs.getInt("contract_id");
-                String categories = rs.getString("???"); // ?????????????
-                int session_time = rs.getInt("???");
+                String categories = rs.getString("category");
+                int session_time = rs.getInt("time");
                 calls.add(new Calls(contract_id, categories, session_time));
             }
         } catch (SQLException e) {
@@ -94,38 +110,64 @@ public class Antifroud extends GlobalScriptBase {
 
         // определение превышения трафика
         for (int i = 0; i < calls.size(); i++) {
-            for (int j = 0; j < traffic.size(); j++) {
+            Calls call = calls.get(i);
+
+            int contract = call.getContarct_id();
+
+            // 
+            query = "Select id, fc"
+                    + "FROM contract"
+                    + "Where id = ?";
+
+            ps.setInt(1, contract);
+            rs = ps.executeQuery();
+            // 0- физ. лицо, 1 - юр.лицо
+            int typeUser = 0;
+            while (rs.next()) {
+                typeUser = rs.getInt("fc");
+            }
+
+            String typeCall = call.getCategories();
+            int timeCall = call.getTime();
+
+            if (traffic.containsKey(call.getContarct_id())) {
+                Traffic tr = traffic.get(call.getContarct_id());
+                int t = 0;
+                switch (typeCall) {
+                    case "Внутризоновый":
+                        t = tr.getInterzone();
+                        break;
+                    case "Междугородний":
+                        t = tr.getIntercity();
+                        break;
+                    case "Международный":
+                        t = tr.getInternational();
+                        break;
+                    //default:   throw new Exception("Неопознанный тип звонка") ;
+                }
+
+                t += timeCall;
+                switch (typeUser) {
+                    case 0:
+                        if (InZoneNatural(t) || IntercityNatural(t) || International(t)) {
+                            query = "update contaract set statuc = 4 WHERE id = ?";
+                            ps.setInt(1, contract);
+                            rs = ps.executeQuery();
+                        }
+                        break;
+                    case 1:
+                        if (InZoneLegal(t) || IntercityLegal(t) || International(t)) {
+                            query = "update contaract set statuc = 4 WHERE id = ?";
+                            ps.setInt(1, contract);
+                            rs = ps.executeQuery();
+                        }
+                        ;
+                        break;
+                }
 
             }
+
         }
-
-    }
-
-    /**
-     * Приостановление действий контракта
-     */
-    private static void ContractStop() {
-
-    }
-
-    /**
-     * Преобразование числа в строку
-     *
-     * @param numb число
-     * @return число в встроковом представлении
-     */
-    private static String ToString(int numb) {
-        return Integer.toString(numb);
-    }
-
-    /**
-     * Получение данных из БД
-     *
-     * @param query запрос
-     */
-    private ResultSet GetResult(PreparedStatement query) throws SQLException {
-        ResultSet rez = query.executeQuery();
-        return rez;
 
     }
 
@@ -212,53 +254,6 @@ public class Antifroud extends GlobalScriptBase {
         boolean rez = (session > LIMIT_SECONDS);
 
         return rez;
-    }
-
-    /**
-     * Определение типа исходящего звонка
-     *
-     * @param number телефонный номер в формате E.164
-     * @return 1 - международный, 2 - междугородний, 3 - внутризоновый
-     */
-    public static int WhatTheCall(String number, List<Traffic> mobile) {
-        int call = 0;
-
-        /* определение масштаба звонка:
-            7 - звонок внутри страны, 
-            8 - звонок в другие страны.
-         */
-        String codeCountry = number.substring(0, 1);
-        if (!codeCountry.equals("7")) {
-            call = 1;
-        } else {
-            String prefix = number.substring(1, 4);
-            String numb = number.substring(4);
-            call = prefix.equals(CODE) || isHaveNumber(prefix, numb, mobile) ? 3 : 2;
-        }
-        return call;
-
-    }
-
-    /**
-     * Принадлежит ли сотовый телефон операторам Иркутской области
-     *
-     * @param code код оператора
-     * @param number номер телефона
-     * @return true - принадлежит, false - не принадлежит
-     */
-    public static boolean isHaveNumber(String code, String number, List<Traffic> mobile) {
-
-        int numb = Integer.parseInt(number);
-
-        if (mobile.stream().filter((val) -> (val.getCode().trim().equals(code))).map((val) -> {
-            int start = Integer.parseInt(val.getStartNumber().trim());
-            int end = Integer.parseInt(val.getEndNumber().trim());
-            boolean param2 = (numb >= start && numb <= end);
-            return param2;
-        }).anyMatch((param2) -> (param2))) {
-            return true;
-        }
-        return false;
     }
 
 }
