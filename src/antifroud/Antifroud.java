@@ -1,6 +1,8 @@
 package antifroud;
 
 import bitel.billing.common.TimeUtils;
+import bitel.billing.server.contract.bean.ContractStatus;
+import bitel.billing.server.contract.bean.ContractStatusManager;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -16,6 +18,8 @@ import ru.bitel.bgbilling.kernel.script.server.dev.GlobalScriptBase;
 import ru.bitel.bgbilling.server.util.Setup;
 import ru.bitel.common.sql.ConnectionSet;
 import org.apache.log4j.Logger;
+import ru.bitel.bgbilling.kernel.contract.api.common.bean.Contract;
+import ru.bitel.bgbilling.kernel.contract.api.server.bean.ContractDao;
 import ru.bitel.bgbilling.server.util.ServerUtils;
 
 public class Antifroud extends GlobalScriptBase {
@@ -43,9 +47,9 @@ public class Antifroud extends GlobalScriptBase {
 
         // считывание данных о звонках за день
         HashMap<Integer, Traffic> traffic = new HashMap<>();
-        String query = "SELECT id, contract_id, interzone, international, day, status"
-                + "From ?"
-                + "WHERE status = false"
+        String query = "SELECT id, contract_id, interzone, international, day, status \n"
+                + "From ? \n"
+                + "WHERE status = false \n"
                 + "GROUP BY contract_id";
         PreparedStatement ps = con.prepareStatement(query);
         ps.setString(0, "traffic");
@@ -70,20 +74,17 @@ public class Antifroud extends GlobalScriptBase {
         // 2) по каккой период производится выборка
         // 3) имя таблицы, из которой производится выборка
         ArrayList<Calls> calls = new ArrayList<>();
-        query = "SELECT calls.cid, calls.category, sum(calls.round_session_time) as time"
-                + "FROM (SELECT "
-                + "s.id,"
-                + "s.cid,"
-                + "s.from_number_164 `from`,"
-                + "s.to_number_164 number,"
-                + "s.round_session_time,"
-                + "IF (s.to_number_164 LIKE '8%', 'Международная',"
-                + "IF (SUBSTR(s.to_number_164,1,3)=SUBSTR(s.from_number_164,1,3),'Внутризоновые','Междугородние')"
-                + ") category"
-                + "FROM log_session_18_201708_fraud s"
-                + "WHERE s.session_start BETWEEN ? AND ?"
-                + "LIMIT 10000) calls"
-                + "GROUP BY calls.cid, calls.category;";
+
+        query = "SELECT calls.cid, calls.category, sum(calls.round_session_time) as time \n"
+                + "FROM (SELECT s.id, s.cid, s.from_number_164, s.to_number_164, s.round_session_time, \n"
+                + "IF (s.to_number_164 LIKE '8%', 'Международная', \n"
+                + "(SUBSTR(s.to_number_164, 2, 3) = SUBSTR(s.from_number_164, 2, 3) \n"
+                + "or isIrkMobile(s.to_number_164),'Внутризоновые','Междугородние') \n"
+                + ") category \n"
+                + "FROM ? s \n"
+                + "WHERE s.session_start BETWEEN ? AND ? \n"
+                + "LIMIT 10000) calls \n"
+                + "GROUP BY calls.cid, calls.category";
         ps = con.prepareStatement(query);
         rs = ps.executeQuery();
 
@@ -91,9 +92,9 @@ public class Antifroud extends GlobalScriptBase {
         try {
             ps = con.prepareStatement(query);
 
-            ps.setTimestamp(1, TimeUtils.convertCalendarToTimestamp(from));
+            ps.setString(1, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), 18));
             ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(to));
-            ps.setString(3, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), 18));
+            ps.setTimestamp(3, TimeUtils.convertCalendarToTimestamp(from));
 
             rs = ps.executeQuery();
             while (rs.next()) {
@@ -115,8 +116,8 @@ public class Antifroud extends GlobalScriptBase {
             int contract = call.getContarct_id();
 
             // 
-            query = "Select id, fc"
-                    + "FROM contract"
+            query = "Select id, fc \n"
+                    + "FROM contract \n"
                     + "Where id = ?";
 
             ps.setInt(1, contract);
@@ -128,40 +129,48 @@ public class Antifroud extends GlobalScriptBase {
             }
 
             String typeCall = call.getCategories();
-            int timeCall = call.getTime();
 
             if (traffic.containsKey(call.getContarct_id())) {
                 Traffic tr = traffic.get(call.getContarct_id());
-                int t = 0;
+                int timeInterzone = tr.getInterzone();
+                int timeIntercity = tr.getIntercity();
+                int timeInternational = tr.getInternational();
+
                 switch (typeCall) {
                     case "Внутризоновый":
-                        t = tr.getInterzone();
+                        timeInterzone += calls.get(i).getTime();
                         break;
                     case "Междугородний":
-                        t = tr.getIntercity();
+                        timeIntercity += calls.get(i).getTime();
                         break;
                     case "Международный":
-                        t = tr.getInternational();
+                        timeInternational += calls.get(i).getTime();
                         break;
                     //default:   throw new Exception("Неопознанный тип звонка") ;
                 }
+                query = "SELECT id, cid \n"
+                        + "FROM exception";
 
-                t += timeCall;
                 switch (typeUser) {
                     case 0:
-                        if (InZoneNatural(t) || IntercityNatural(t) || International(t)) {
-                            query = "update contaract set statuc = 4 WHERE id = ?";
-                            ps.setInt(1, contract);
-                            rs = ps.executeQuery();
+                        if (InZoneNatural(timeInterzone) || IntercityNatural(timeIntercity) || International(timeInternational)) {
+                            // ContractStatusManager csm = new ContractStatusManager(connectionSet.getConnection());
+                            //ContractStatus cs = new ContractStatus();
+                            //csm.setContractStatus(4);
+
+                            ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
+                            Contract c = cd.get(contract);
+                            c.setStatus((byte) 4);
+                            cd.update(c);
                         }
                         break;
                     case 1:
-                        if (InZoneLegal(t) || IntercityLegal(t) || International(t)) {
-                            query = "update contaract set statuc = 4 WHERE id = ?";
-                            ps.setInt(1, contract);
-                            rs = ps.executeQuery();
+                        if (InZoneLegal(timeInterzone) || IntercityLegal(timeIntercity) || International(timeInternational)) {
+                            ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
+                            Contract c = cd.get(contract);
+                            c.setStatus((byte) 4);
+                            cd.update(c);
                         }
-                        ;
                         break;
                 }
 
