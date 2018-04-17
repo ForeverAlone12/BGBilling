@@ -1,13 +1,9 @@
 package antifroud;
 
 import bitel.billing.common.TimeUtils;
-import bitel.billing.server.contract.bean.ContractStatus;
-import bitel.billing.server.contract.bean.ContractStatusManager;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.SQLDataException;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -32,30 +28,150 @@ public class Antifroud extends GlobalScriptBase {
 
         // определение текущего времени
         Calendar from = Calendar.getInstance();
-        from.set(Calendar.YEAR, 2017);
+        
+        // --- удалить на боевой версии
+        from.set(Calendar.YEAR, 2018);
         from.set(Calendar.MONTH, 7); //месяцы в Calendar нумеруются с 0. Так исторически сложилось :)
         from.set(Calendar.DAY_OF_MONTH, 1);
         from.set(Calendar.HOUR_OF_DAY, 0);
         from.set(Calendar.MINUTE, 0);
         from.set(Calendar.SECOND, 0);
-
+        // --- конец удаления       
+        
         Calendar to = (Calendar) from.clone();
         to.add(Calendar.HOUR_OF_DAY, 1);
 
         // подключение к БД
-        Connection con = connectionSet.getConnection();
+        Connection con = null;
+        try {
+            con = connectionSet.getConnection();
+        } catch (Exception ex) {
+            logger.error("Не удалось подключиться к БД\n");
+            logger.error(ex.getMessage(), ex);
+        }
 
-        // считывание данных о звонках за день
+        HashMap<Integer, Traffic> traffic = new HashMap<>();
+        try { // считывание данных об обработанных звонках за день
+            traffic = getTraffic(con);
+        } catch (SQLException ex) {
+            logger.error("Не удалось извлечь данные об обработанных звонках за день.\n"
+                    + "Время начала извлечения " + from.toString());
+            logger.error(ex.getMessage(), ex);
+        }
+
+        ArrayList<Calls> calls = new ArrayList<>();
+        try {
+            calls = getCalls(con, from, to);
+        } catch (SQLException e) {
+            logger.error("Не удалось извлечь данные о звонках с " + from.toString() + " по " + to.toString() + "\n");
+            logger.error(e.getMessage(), e);
+        }
+
+        // определение превышения трафика
+        for (int i = 0; i < calls.size(); i++) {
+            Calls call = calls.get(i);
+            int contract = call.getContarct_id();
+            int typeUser = 0; // 0- физ. лицо, 1 - юр.лицо
+
+            try {
+                typeUser = WhatUser(con, contract);
+            } catch (SQLException e) {
+                logger.error("Не удалось извлечь данные о пользователе c id = " + contract + "\n");
+                logger.error(e.getMessage(), e);
+            }
+
+            String typeCall = call.getCategories();
+            Traffic tr = traffic.get(call.getContarct_id());
+
+            // если есть данные о звонках
+            if (traffic.containsKey(call.getContarct_id())) {
+
+                try {
+                    switch (typeCall) {
+                        case "1":
+                            tr.setInternational(tr.getInternational() + calls.get(i).getTime());
+                            break;
+                        case "2":
+                            tr.setIntercity(tr.getIntercity() + calls.get(i).getTime());
+                            break;
+                        case "3":
+                            tr.setInterzone(tr.getInterzone() + calls.get(i).getTime());
+                            break;
+                        default:
+                            throw new Exception("Неопознанный тип звонка");
+                    }
+                } catch (Exception ex) {
+                    logger.error("Не удалось распознать тип звонка. Полученный тип: " + typeCall + "\n");
+                    logger.error(ex.getMessage(), ex);
+                }
+
+                // получение информации о пользователях, которых нельзя блокировать
+                ArrayList<Users> users = new ArrayList<>();
+                try {
+                    users = getUsers(con);
+                } catch (SQLException ex) {
+                    logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
+                    logger.error(ex.getMessage(), ex);
+                }
+
+                if (!users.contains(call.getContarct_id())) {
+                    try {
+                        switch (typeUser) {
+                            case 0:
+                                if (InZoneNatural(tr.getInterzone()) || IntercityNatural(tr.getIntercity()) || International(tr.getInternational())) {
+                                    LockContract(connectionSet, contract);
+                                    tr.setStatus((byte) 0);
+                                }
+                                break;
+                            case 1:
+                                if (InZoneLegal(tr.getInterzone()) || IntercityLegal(tr.getIntercity()) || International(tr.getInternational())) {
+                                    LockContract(connectionSet, contract);
+                                    tr.setStatus((byte) 0);
+                                }
+                                break;
+                            default:
+                                throw new Exception("Неопознанный тип абонента");
+                        }
+                    } catch (Exception ex) {
+                        logger.error("Не удалось распознать абонента. Номер контракта: " + contract + ". Полученный тип абонента: " + typeUser);
+                        logger.error(ex.getMessage(), ex);
+                    }
+
+                    try {
+                        AddDataInTraffic(con, tr, from);
+                    } catch (SQLException ex) {
+                        logger.error("Ошибка вставки данных о звонках абонента: " + contract);
+                        logger.error(ex.getMessage(), ex);
+                    }
+
+                } else { // информации о звонках пользователя нет
+                    try {
+                        AddDataInTraffic(con, tr, from);
+                    } catch (SQLException ex) {
+                        logger.error("Ошибка вставки данных о звонках абонента: " + contract);
+                        logger.error(ex.getMessage(), ex);
+                    }
+                }
+            }
+        }
+
+    }
+
+    /**
+     * Получение данных о трафике абонента
+     *
+     * @param con
+     * @return
+     * @throws SQLException
+     */
+    private HashMap<Integer, Traffic> getTraffic(Connection con) throws SQLException {
         HashMap<Integer, Traffic> traffic = new HashMap<>();
         String query = "SELECT id, contract_id, interzone, international, day, status \n"
-                + "From ? \n"
+                + "From traffic \n"
                 + "WHERE status = false \n"
                 + "GROUP BY contract_id";
         PreparedStatement ps = con.prepareStatement(query);
-        ps.setString(0, "traffic");
-
         ResultSet rs = ps.executeQuery();
-
         while (rs.next()) {
             int id = rs.getInt("id");
             int contract_id = rs.getInt("contract_id");
@@ -63,121 +179,132 @@ public class Antifroud extends GlobalScriptBase {
             int intercity = rs.getInt("intercity");
             int international = rs.getInt("international");
             Date day = rs.getDate("day");
-            boolean status = rs.getBoolean("status");
+            byte status = rs.getByte("status");
             traffic.put(contract_id, new Traffic(id, contract_id, interzone, intercity, international, day, status));
         }
+        return traffic;
+    }
 
-        // вызов функции, которая возвращает звонки в виде 
-        // <номер_договора, категория звонка, длительность звонка>
+    /**
+     * выбор данных о звонках в виде "номер_договора, категория звонка,
+     * длительность звонка"
+     *
+     * @param con
+     * @param from
+     * @param to
+     * @return
+     * @throws SQLException
+     */
+    private ArrayList<Calls> getCalls(Connection con, Calendar from, Calendar to) throws SQLException {
+        ArrayList<Calls> calls = new ArrayList<>();
+        // 
         // входные параметры:
         // 1) с какого  периода произодится выборка
         // 2) по каккой период производится выборка
         // 3) имя таблицы, из которой производится выборка
-        ArrayList<Calls> calls = new ArrayList<>();
-
-        query = "SELECT calls.cid, calls.category, sum(calls.round_session_time) as time \n"
+        String query = "SELECT calls.cid, calls.category, sum(calls.round_session_time) as time \n"
                 + "FROM (SELECT s.id, s.cid, s.from_number_164, s.to_number_164, s.round_session_time, \n"
-                + "IF (s.to_number_164 LIKE '8%', 'Международная', \n"
+                + "IF (s.to_number_164 LIKE '8%', '1', \n"
                 + "(SUBSTR(s.to_number_164, 2, 3) = SUBSTR(s.from_number_164, 2, 3) \n"
-                + "or isIrkMobile(s.to_number_164),'Внутризоновые','Междугородние') \n"
+                + "or isIrkMobile(s.to_number_164),'3','2') \n"
                 + ") category \n"
                 + "FROM ? s \n"
                 + "WHERE s.session_start BETWEEN ? AND ? \n"
                 + "LIMIT 10000) calls \n"
                 + "GROUP BY calls.cid, calls.category";
-        ps = con.prepareStatement(query);
-        rs = ps.executeQuery();
+        PreparedStatement ps = con.prepareStatement(query);
+        ps.setString(1, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), 18));
+        ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(to));
+        ps.setTimestamp(3, TimeUtils.convertCalendarToTimestamp(from));
 
-        // 
-        try {
-            ps = con.prepareStatement(query);
-
-            ps.setString(1, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), 18));
-            ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(to));
-            ps.setTimestamp(3, TimeUtils.convertCalendarToTimestamp(from));
-
-            rs = ps.executeQuery();
-            while (rs.next()) {
-                int contract_id = rs.getInt("contract_id");
-                String categories = rs.getString("category");
-                int session_time = rs.getInt("time");
-                calls.add(new Calls(contract_id, categories, session_time));
-            }
-        } catch (SQLException e) {
-            print("Не удалось извлечь данные");
-            logger.error("Не удалось извлечь данные");
-            logger.error(e.getMessage(), e);
+        ResultSet rs = ps.executeQuery();
+        while (rs.next()) {
+            int contract_id = rs.getInt("contract_id");
+            String categories = rs.getString("category");
+            int session_time = rs.getInt("time");
+            calls.add(new Calls(contract_id, categories, session_time));
         }
+        return calls;
+    }
 
-        // определение превышения трафика
-        for (int i = 0; i < calls.size(); i++) {
-            Calls call = calls.get(i);
+    /**
+     * Определение является абонент юридичиским или физическим лицом
+     *
+     * @param con
+     * @param contract номер контракта
+     * @return 0- физ. лицо, 1 - юр.лицо
+     * @throws SQLException
+     */
+    private int WhatUser(Connection con, int contract) throws SQLException {
+        // определение пользователя (физическое или юридическое лицо)
+        String query = "Select id, fc \n"
+                + "FROM contract \n"
+                + "Where id = " + contract;
+        PreparedStatement ps = con.prepareStatement(query);
+        ResultSet rs = ps.executeQuery();
 
-            int contract = call.getContarct_id();
-
-            // 
-            query = "Select id, fc \n"
-                    + "FROM contract \n"
-                    + "Where id = ?";
-
-            ps.setInt(1, contract);
-            rs = ps.executeQuery();
-            // 0- физ. лицо, 1 - юр.лицо
-            int typeUser = 0;
-            while (rs.next()) {
-                typeUser = rs.getInt("fc");
-            }
-
-            String typeCall = call.getCategories();
-
-            if (traffic.containsKey(call.getContarct_id())) {
-                Traffic tr = traffic.get(call.getContarct_id());
-                int timeInterzone = tr.getInterzone();
-                int timeIntercity = tr.getIntercity();
-                int timeInternational = tr.getInternational();
-
-                switch (typeCall) {
-                    case "Внутризоновый":
-                        timeInterzone += calls.get(i).getTime();
-                        break;
-                    case "Междугородний":
-                        timeIntercity += calls.get(i).getTime();
-                        break;
-                    case "Международный":
-                        timeInternational += calls.get(i).getTime();
-                        break;
-                    //default:   throw new Exception("Неопознанный тип звонка") ;
-                }
-                query = "SELECT id, cid \n"
-                        + "FROM exception";
-
-                switch (typeUser) {
-                    case 0:
-                        if (InZoneNatural(timeInterzone) || IntercityNatural(timeIntercity) || International(timeInternational)) {
-                            // ContractStatusManager csm = new ContractStatusManager(connectionSet.getConnection());
-                            //ContractStatus cs = new ContractStatus();
-                            //csm.setContractStatus(4);
-
-                            ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
-                            Contract c = cd.get(contract);
-                            c.setStatus((byte) 4);
-                            cd.update(c);
-                        }
-                        break;
-                    case 1:
-                        if (InZoneLegal(timeInterzone) || IntercityLegal(timeIntercity) || International(timeInternational)) {
-                            ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
-                            Contract c = cd.get(contract);
-                            c.setStatus((byte) 4);
-                            cd.update(c);
-                        }
-                        break;
-                }
-
-            }
-
+        int typeUser = -1;
+        while (rs.next()) {
+            typeUser = rs.getInt("fc");
         }
+        return typeUser;
+    }
 
+    /**
+     * Получение данных о пользователей, которых нельзя блокировать
+     *
+     * @param con
+     * @return
+     * @throws SQLException
+     */
+    private ArrayList<Users> getUsers(Connection con) throws SQLException {
+        ArrayList<Users> users = new ArrayList<>();
+        String query = "SELECT id, cid \n"
+                + "FROM exception";
+        PreparedStatement ps = con.prepareStatement(query);
+        ResultSet rs = ps.executeQuery();
+        while (rs.next()) {
+            int id = rs.getInt("id");
+            int cid = rs.getInt("cid");
+            users.add(new Users(id, cid));
+        }
+        return users;
+    }
+
+    /**
+     * Добавление информации о трафике абонента
+     *
+     * @param con
+     * @param tr данные трафика
+     * @param date
+     * @throws SQLException
+     */
+    private void AddDataInTraffic(Connection con, Traffic tr, Calendar date) throws SQLException {
+        String query = "INSERT INTO traffic (`id`, `contract_id`, `interzone`, `intercity`, `international`, `day`, `status`)"
+                + " VALUES ('', ?, ?, ?, ?, ?, ?);";
+
+        PreparedStatement ps = con.prepareStatement(query);
+        ps.setInt(1, tr.getContract_id());
+        ps.setInt(2, tr.getInterzone());
+        ps.setInt(3, tr.getIntercity());
+        ps.setInt(4, tr.getInternational());
+        ps.setDate(5, TimeUtils.convertCalendarToSqlDate(date));
+        ps.setInt(6, tr.getStatus());
+        ResultSet rs = ps.executeQuery();
+    }
+
+    /**
+     * Блокировка абонента
+     *
+     * @param connectionSet
+     * @param contract номер контракта
+     * @throws Exception
+     */
+    private void LockContract(ConnectionSet connectionSet, int contract) throws Exception {
+        ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
+        Contract c = cd.get(contract);
+        c.setStatus((byte) 4);
+        cd.update(c);
     }
 
     /**
