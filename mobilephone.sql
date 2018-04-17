@@ -33,7 +33,7 @@ CREATE TABLE `mobilephone` (
   `code` int(3) NOT NULL COMMENT 'код мобильного оператора',
   `start` varchar(7) NOT NULL COMMENT 'начало диапазона номеров',
   `end` varchar(7) NOT NULL COMMENT 'конец диапазона номеров'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Мобильые номера Иркутской области';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Мобильые номера Иркутской области' COLLATE=utf8_unicode_ci;;
 
 --
 -- Дамп данных таблицы `mobilephone`

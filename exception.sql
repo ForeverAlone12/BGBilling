@@ -31,7 +31,7 @@ DROP TABLE IF EXISTS `exception`;
 CREATE TABLE `exception` (
   `id` int(11) NOT NULL COMMENT 'код записи',
   `cid` int(11) NOT NULL COMMENT 'код договора'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Исключения блокировки';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Исключения блокировки' COLLATE=utf8_unicode_ci;;
 
 --
 -- Индексы сохранённых таблиц

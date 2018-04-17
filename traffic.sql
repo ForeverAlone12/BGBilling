@@ -36,7 +36,7 @@ CREATE TABLE `traffic` (
   `international` int(11) NOT NULL COMMENT 'время международного разговора',
   `day` date NOT NULL COMMENT 'дата разговора',
   `status` tinyint(1) NOT NULL COMMENT 'статус (заблокирован/ не заблокирован)'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Данные о звоонках';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Данные о звоонках' COLLATE=utf8_unicode_ci;;
 
 --
 -- Индексы сохранённых таблиц
