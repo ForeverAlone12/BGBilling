@@ -31,6 +31,14 @@ public class Traffic {
     }
 
     /**
+     * 
+     * @param contract_id номер контракта
+     */
+    public Traffic(int contract_id) {
+        this.contract_id = contract_id;
+    }
+
+    /**
      * Идентификатор записи
      */
     private int id;
@@ -61,7 +69,8 @@ public class Traffic {
     private Date day;
 
     /**
-     * Статус договора: 0 - подключен, 1 - на отключении, 2 - отключен, 3 - закрыт, 4 - приостановлен, 5 - на подключении
+     * Статус договора: 0 - подключен, 1 - на отключении, 2 - отключен, 3 -
+     * закрыт, 4 - приостановлен, 5 - на подключении
      */
     private int status;
 

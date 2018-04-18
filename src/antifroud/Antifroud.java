@@ -20,6 +20,8 @@ import ru.bitel.bgbilling.server.util.ServerUtils;
 
 public class Antifroud extends GlobalScriptBase {
 
+    private Connection con;
+
     @Override
     public void execute(Setup setup, ConnectionSet connectionSet) throws Exception {
 
@@ -28,21 +30,21 @@ public class Antifroud extends GlobalScriptBase {
 
         // определение текущего времени
         Calendar from = Calendar.getInstance();
-        
+
         // --- удалить на боевой версии
         from.set(Calendar.YEAR, 2018);
-        from.set(Calendar.MONTH, 7); //месяцы в Calendar нумеруются с 0. Так исторически сложилось :)
+        //месяцы в Calendar нумеруются с 0. Так исторически сложилось :)
+        from.set(Calendar.MONTH, 7);
         from.set(Calendar.DAY_OF_MONTH, 1);
         from.set(Calendar.HOUR_OF_DAY, 0);
         from.set(Calendar.MINUTE, 0);
         from.set(Calendar.SECOND, 0);
         // --- конец удаления       
-        
+
         Calendar to = (Calendar) from.clone();
         to.add(Calendar.HOUR_OF_DAY, 1);
 
-        // подключение к БД
-        Connection con = null;
+        // Попытка подключения к БД
         try {
             con = connectionSet.getConnection();
         } catch (Exception ex) {
@@ -50,38 +52,47 @@ public class Antifroud extends GlobalScriptBase {
             logger.error(ex.getMessage(), ex);
         }
 
+        // считывание данных об обработанных звонках за день
         HashMap<Integer, Traffic> traffic = new HashMap<>();
-        try { // считывание данных об обработанных звонках за день
-            traffic = getTraffic(con);
+        try { 
+            traffic = getTraffic();
         } catch (SQLException ex) {
             logger.error("Не удалось извлечь данные об обработанных звонках за день.\n"
                     + "Время начала извлечения " + from.toString());
             logger.error(ex.getMessage(), ex);
         }
 
+        // Считывание необработанных звонков
         ArrayList<Calls> calls = new ArrayList<>();
         try {
-            calls = getCalls(con, from, to);
+            calls = getCalls(from, to);
         } catch (SQLException e) {
-            logger.error("Не удалось извлечь данные о звонках с " + from.toString() + " по " + to.toString() + "\n");
+            logger.error("Не удалось извлечь данные о звонках с " 
+                    + from.toString() + " по " + to.toString() + "\n");
             logger.error(e.getMessage(), e);
         }
 
+        
+       Calls call; // данные звонка абонента
+       Traffic tr; // текущий трафик абонента
+        
         // определение превышения трафика
         for (int i = 0; i < calls.size(); i++) {
-            Calls call = calls.get(i);
+            call = calls.get(i);
             int contract = call.getContarct_id();
-            int typeUser = 0; // 0- физ. лицо, 1 - юр.лицо
+            int typeUser = 0; // 0 - физ. лицо, 1 - юр.лицо
 
+            
             try {
-                typeUser = WhatUser(con, contract);
+                typeUser = WhatUser(contract);
             } catch (SQLException e) {
                 logger.error("Не удалось извлечь данные о пользователе c id = " + contract + "\n");
                 logger.error(e.getMessage(), e);
             }
 
             String typeCall = call.getCategories();
-            Traffic tr = traffic.get(call.getContarct_id());
+            tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id()));
+           // tr = traffic.get(call.getContarct_id());
 
             // если есть данные о звонках
             if (traffic.containsKey(call.getContarct_id())) {
@@ -108,7 +119,7 @@ public class Antifroud extends GlobalScriptBase {
                 // получение информации о пользователях, которых нельзя блокировать
                 ArrayList<Users> users = new ArrayList<>();
                 try {
-                    users = getUsers(con);
+                    users = getUsers();
                 } catch (SQLException ex) {
                     logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
                     logger.error(ex.getMessage(), ex);
@@ -138,7 +149,7 @@ public class Antifroud extends GlobalScriptBase {
                     }
 
                     try {
-                        AddDataInTraffic(con, tr, from);
+                        AddDataInTraffic(tr, from);
                     } catch (SQLException ex) {
                         logger.error("Ошибка вставки данных о звонках абонента: " + contract);
                         logger.error(ex.getMessage(), ex);
@@ -146,7 +157,7 @@ public class Antifroud extends GlobalScriptBase {
 
                 } else { // информации о звонках пользователя нет
                     try {
-                        AddDataInTraffic(con, tr, from);
+                        AddDataInTraffic(tr, from);
                     } catch (SQLException ex) {
                         logger.error("Ошибка вставки данных о звонках абонента: " + contract);
                         logger.error(ex.getMessage(), ex);
@@ -164,10 +175,10 @@ public class Antifroud extends GlobalScriptBase {
      * @return
      * @throws SQLException
      */
-    private HashMap<Integer, Traffic> getTraffic(Connection con) throws SQLException {
+    private HashMap<Integer, Traffic> getTraffic() throws SQLException {
         HashMap<Integer, Traffic> traffic = new HashMap<>();
         String query = "SELECT id, contract_id, interzone, international, day, status \n"
-                + "From traffic \n"
+                + "FROM traffic \n"
                 + "WHERE status = false \n"
                 + "GROUP BY contract_id";
         PreparedStatement ps = con.prepareStatement(query);
@@ -195,7 +206,7 @@ public class Antifroud extends GlobalScriptBase {
      * @return
      * @throws SQLException
      */
-    private ArrayList<Calls> getCalls(Connection con, Calendar from, Calendar to) throws SQLException {
+    private ArrayList<Calls> getCalls(Calendar from, Calendar to) throws SQLException {
         ArrayList<Calls> calls = new ArrayList<>();
         // 
         // входные параметры:
@@ -235,7 +246,7 @@ public class Antifroud extends GlobalScriptBase {
      * @return 0- физ. лицо, 1 - юр.лицо
      * @throws SQLException
      */
-    private int WhatUser(Connection con, int contract) throws SQLException {
+    private int WhatUser(int contract) throws SQLException {
         // определение пользователя (физическое или юридическое лицо)
         String query = "Select id, fc \n"
                 + "FROM contract \n"
@@ -257,7 +268,7 @@ public class Antifroud extends GlobalScriptBase {
      * @return
      * @throws SQLException
      */
-    private ArrayList<Users> getUsers(Connection con) throws SQLException {
+    private ArrayList<Users> getUsers() throws SQLException {
         ArrayList<Users> users = new ArrayList<>();
         String query = "SELECT id, cid \n"
                 + "FROM exception";
@@ -279,7 +290,7 @@ public class Antifroud extends GlobalScriptBase {
      * @param date
      * @throws SQLException
      */
-    private void AddDataInTraffic(Connection con, Traffic tr, Calendar date) throws SQLException {
+    private void AddDataInTraffic(Traffic tr, Calendar date) throws SQLException {
         String query = "INSERT INTO traffic (`id`, `contract_id`, `interzone`, `intercity`, `international`, `day`, `status`)"
                 + " VALUES ('', ?, ?, ?, ?, ?, ?);";
 
@@ -354,9 +365,7 @@ public class Antifroud extends GlobalScriptBase {
         int LIMIT_MINUTES = 200;
         int LIMIT_SECONDS = LIMIT_MINUTES * 60;
 
-        boolean rez = (session > LIMIT_SECONDS);
-
-        return rez;
+        return (session > LIMIT_SECONDS);
     }
 
     /**
@@ -371,9 +380,7 @@ public class Antifroud extends GlobalScriptBase {
         int LIMIT_MINUTES = 1000;
         int LIMIT_SECONDS = LIMIT_MINUTES * 60;
 
-        boolean rez = (session > LIMIT_SECONDS);
-
-        return rez;
+        return session > LIMIT_SECONDS;
     }
 
     /**
