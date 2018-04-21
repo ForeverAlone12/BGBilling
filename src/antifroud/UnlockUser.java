@@ -41,18 +41,23 @@ public class UnlockUser extends GlobalScriptBase {
         }
 
         try {
-            String query = "Select contract_id, status \n"
-                    + "FROM traffic \n"
-                    + "Where status = 4";
+            String query = "Select id, fc, cid \n"
+                    + "FROM lockabonent \n"
+                    + "Where fc = 0";
             PreparedStatement ps = con.prepareStatement(query);
             ResultSet rs = ps.executeQuery();
 
             while (rs.next()) {
-                int contract = rs.getInt("contract_id");
+                int contract = rs.getInt("cid");                
+                int fc = rs.getInt("fc");
                 ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
                 Contract c = cd.get(contract);
                 c.setStatus((byte) 0);
                 cd.update(c);
+                
+                query = "DELETE FROM lockabonent  WHERE fc = " + fc;
+                    ps = con.prepareStatement(query);
+                    ps.executeUpdate();
             }
         } catch (SQLException ex) {
             logger.error("Не удалось извлечь данные о юридических лицах\n");

@@ -17,16 +17,23 @@ import org.apache.log4j.Logger;
 import ru.bitel.bgbilling.kernel.contract.api.common.bean.Contract;
 import ru.bitel.bgbilling.kernel.contract.api.server.bean.ContractDao;
 import ru.bitel.bgbilling.server.util.ServerUtils;
+import ru.bitel.common.ParameterMap;
 
 public class Antifroud extends GlobalScriptBase {
 
     private Connection con;
+    private ConnectionSet conSet;
+    private ParameterMap setting;
 
     @Override
     public void execute(Setup setup, ConnectionSet connectionSet) throws Exception {
 
         // обработчик ошибок
         Logger logger = Logger.getLogger(this.getClass());
+
+        conSet = connectionSet;
+
+        setting = setup.sub("fraud");
 
         // определение текущего времени
         Calendar from = Calendar.getInstance();
@@ -54,7 +61,7 @@ public class Antifroud extends GlobalScriptBase {
 
         // считывание данных об обработанных звонках за день
         HashMap<Integer, Traffic> traffic = new HashMap<>();
-        try { 
+        try {
             traffic = getTraffic();
         } catch (SQLException ex) {
             logger.error("Не удалось извлечь данные об обработанных звонках за день.\n"
@@ -67,22 +74,20 @@ public class Antifroud extends GlobalScriptBase {
         try {
             calls = getCalls(from, to);
         } catch (SQLException e) {
-            logger.error("Не удалось извлечь данные о звонках с " 
+            logger.error("Не удалось извлечь данные о звонках с "
                     + from.toString() + " по " + to.toString() + "\n");
             logger.error(e.getMessage(), e);
         }
 
-        
-       Calls call; // данные звонка абонента
-       Traffic tr; // текущий трафик абонента
-        
+        Calls call; // данные звонка абонента
+        Traffic tr; // текущий трафик абонента
+
         // определение превышения трафика
         for (int i = 0; i < calls.size(); i++) {
             call = calls.get(i);
             int contract = call.getContarct_id();
-            int typeUser = 0; // 0 - физ. лицо, 1 - юр.лицо
+            int typeUser = 0; // тип пользователя: 0 - физ. лицо, 1 - юр.лицо
 
-            
             try {
                 typeUser = WhatUser(contract);
             } catch (SQLException e) {
@@ -92,7 +97,7 @@ public class Antifroud extends GlobalScriptBase {
 
             String typeCall = call.getCategories();
             tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id()));
-           // tr = traffic.get(call.getContarct_id());
+            // tr = traffic.get(call.getContarct_id());
 
             // если есть данные о звонках
             if (traffic.containsKey(call.getContarct_id())) {
@@ -291,8 +296,8 @@ public class Antifroud extends GlobalScriptBase {
      * @throws SQLException
      */
     private void AddDataInTraffic(Traffic tr, Calendar date) throws SQLException {
-        String query = "INSERT INTO traffic (`id`, `contract_id`, `interzone`, `intercity`, `international`, `day`, `status`)"
-                + " VALUES ('', ?, ?, ?, ?, ?, ?);";
+        String query = "INSERT INTO traffic (`id`, `contract_id`, `interzone`, `intercity`, `international`, `day`, `status`)\n"
+                + " VALUES ('', ?, ?, ?, ?, ?, ?)";
 
         PreparedStatement ps = con.prepareStatement(query);
         ps.setInt(1, tr.getContract_id());
@@ -301,7 +306,7 @@ public class Antifroud extends GlobalScriptBase {
         ps.setInt(4, tr.getInternational());
         ps.setDate(5, TimeUtils.convertCalendarToSqlDate(date));
         ps.setInt(6, tr.getStatus());
-        ResultSet rs = ps.executeQuery();
+        ps.executeUpdate();
     }
 
     /**
@@ -326,14 +331,7 @@ public class Antifroud extends GlobalScriptBase {
      * @return true - лимит превышен, false - лимит не превышен
      */
     private boolean InZoneNatural(int session) {
-
-        // количество доступных минут в день для физических лиц
-        int LIMIT_MINUTES = 200;
-        int LIMIT_SECONDS = LIMIT_MINUTES * 60;
-
-        boolean rez = (session > LIMIT_SECONDS);
-
-        return rez;
+        return session > setting.getInt("LIMIT_SECONDS_NATURAL_ZONE", 1200);
     }
 
     /**
@@ -344,13 +342,7 @@ public class Antifroud extends GlobalScriptBase {
      * @return true - лимит превышен, false - лимит не превышен
      */
     private boolean InZoneLegal(int session) {
-        // количество доступных минут в день для юридических лиц
-        int LIMIT_MINUTES = 1000;
-        int LIMIT_SECONDS = LIMIT_MINUTES * 60;
-
-        boolean rez = (session > LIMIT_SECONDS);
-
-        return rez;
+        return session > setting.getInt("LIMIT_SECONDS_LEGAL_ZONE", 60000);
     }
 
     /**
@@ -361,11 +353,7 @@ public class Antifroud extends GlobalScriptBase {
      * @return true - лимит превышен, false - лимит не превышен
      */
     private boolean IntercityNatural(int session) {
-        // количество доступных минут в день для физических лиц
-        int LIMIT_MINUTES = 200;
-        int LIMIT_SECONDS = LIMIT_MINUTES * 60;
-
-        return (session > LIMIT_SECONDS);
+        return session > setting.getInt("LIMIT_SECONDS_NATURAL_INTERCITY", 1200);
     }
 
     /**
@@ -376,11 +364,7 @@ public class Antifroud extends GlobalScriptBase {
      * @return true - лимит превышен, false - лимит не превышен
      */
     private boolean IntercityLegal(int session) {
-        // количество доступных минут в день для физических лиц
-        int LIMIT_MINUTES = 1000;
-        int LIMIT_SECONDS = LIMIT_MINUTES * 60;
-
-        return session > LIMIT_SECONDS;
+        return session > setting.getInt("LIMIT_SECONDS_LEGAL_INTERCITY", 60000);
     }
 
     /**
@@ -390,13 +374,6 @@ public class Antifroud extends GlobalScriptBase {
      * @return true - лимит превышен, false - лимит не превышен
      */
     private boolean International(int session) {
-        // количество доступных минут в день
-        int LIMIT_MINUTES = 120;
-        int LIMIT_SECONDS = LIMIT_MINUTES * 60;
-
-        boolean rez = (session > LIMIT_SECONDS);
-
-        return rez;
+        return session > setting.getInt("LIMIT_SECONDS_INTERNATIONAL", 1200);
     }
-
 }

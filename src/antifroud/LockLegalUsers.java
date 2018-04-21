@@ -13,9 +13,10 @@ import ru.bitel.bgbilling.server.util.Setup;
 import ru.bitel.common.sql.ConnectionSet;
 
 /**
- * Выключение телефонов абонентов-юридических лиц
+ * Выключение телефонов абонентов-юридических лиц. Запускается в 00:00 каждый
+ * день.
  *
- * @author Витяяяяяяяяяяяяяяя
+ * @author
  */
 public class LockLegalUsers extends GlobalScriptBase {
 
@@ -38,30 +39,43 @@ public class LockLegalUsers extends GlobalScriptBase {
         ArrayList<LegalUser> legalUser = new ArrayList<>();
         try {
             String query = "Select id, fc \n"
-                    + "FROM contract \n"
-                    + "Where fc = 1 AND status = 0";
+                    + "FROM contract c \n"
+                    + "LEFT JOIN contract_module cm on c.id = cm.cid \n"
+                    + "Where c.fc = 1 \n"
+                    + "AND c.sub_mode = 0 \n"
+                    + "AND cm.`mid` = 6 \n"
+                    + "AND c.`status` = 0 \n"
+                    + "AND c.id NOT IN (SELECT id FROM exception)\n";
             PreparedStatement ps = con.prepareStatement(query);
             ResultSet rs = ps.executeQuery();
 
+            ContractDao cd;
+            Contract c;
             while (rs.next()) {
                 int contract = rs.getInt("id");
-                int status = rs.getInt("status");
-                legalUser.add(new LegalUser(contract, status));
+                // блокировка юридических лиц
+                cd = new ContractDao(connectionSet.getConnection(), 0);
+                c = cd.get(contract);
+                c.setStatus((byte) 4);
+                cd.update(c);
+
+                try {
+                    // занесение в таблицу lockabonent заблокированных абонентов
+                    query = "INSERT INTO lockabonent (`id`, `fc`, `cid`) \n"
+                            + " VALUES ('', ?, ?)";
+                    ps = con.prepareStatement(query);
+                    ps.setInt(1, 1);
+                    ps.setInt(2, contract);
+                    ps.executeUpdate();
+                } catch (SQLException ex) {
+                    logger.error("Не удалось внести данные о заблокированных абонентов-юридических лиц\n");
+                    logger.error(ex.getMessage(), ex);
+                }
             }
         } catch (SQLException ex) {
             logger.error("Не удалось извлечь данные о юридических лицах\n");
             logger.error(ex.getMessage(), ex);
         }
-
-        // Блокировка юридических лиц
-        for (LegalUser user: legalUser) {
-            ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
-            Contract c = cd.get(user.getContractId());
-            c.setStatus((byte) 4);
-            cd.update(c);
-            user.setStatus(4);
-        }
-
     }
 
 }

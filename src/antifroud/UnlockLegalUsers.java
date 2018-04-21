@@ -36,30 +36,35 @@ public class UnlockLegalUsers extends GlobalScriptBase {
         // Выборка юридических лиц
         ArrayList<LegalUser> legalUser = new ArrayList<>();
         try {
-            String query = "Select id, fc \n"
-                    + "FROM contract \n"
-                    + "Where fc = 1 AND status = 4";
+            String query = "Select id, fc, cid \n"
+                    + "FROM lockabonent \n"
+                    + "Where fc = 1";
             PreparedStatement ps = con.prepareStatement(query);
             ResultSet rs = ps.executeQuery();
 
             while (rs.next()) {
-                int contract = rs.getInt("id");
-                int status = rs.getInt("status");
-                legalUser.add(new LegalUser(contract, status));
+                // снятие блокировки с абонентов-юридических лиц
+                int contract = rs.getInt("cid");
+                int fc = rs.getInt("fc");
+                ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
+                Contract c = cd.get(contract);
+                c.setStatus((byte) 0);
+                cd.update(c);
+
+                try {
+                    query = "DELETE FROM lockabonent  WHERE fc = " + fc;
+                    ps = con.prepareStatement(query);
+                    ps.executeUpdate();
+                } catch (SQLException ex) {
+                    logger.error("Не удалось убрать данные о заблокированных абонентов-юридических лиц\n");
+                    logger.error(ex.getMessage(), ex);
+                }
             }
         } catch (SQLException ex) {
             logger.error("Не удалось извлечь данные о юридических лицах\n");
             logger.error(ex.getMessage(), ex);
         }
 
-        // Блокировка юридических лиц
-        for (LegalUser user : legalUser) {
-            ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
-            Contract c = cd.get(user.getContractId());
-            c.setStatus((byte) 0);
-            cd.update(c);
-            user.setStatus(0);
-        }
     }
 
 }
