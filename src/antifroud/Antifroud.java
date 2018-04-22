@@ -35,6 +35,8 @@ public class Antifroud extends GlobalScriptBase {
 
         setting = setup.sub("fraud");
 
+        boolean isFail = false;
+
         // определение текущего времени
         Calendar from = Calendar.getInstance();
 
@@ -57,119 +59,142 @@ public class Antifroud extends GlobalScriptBase {
         } catch (Exception ex) {
             logger.error("Не удалось подключиться к БД\n");
             logger.error(ex.getMessage(), ex);
+            isFail = true;
         }
 
-        // считывание данных об обработанных звонках за день
-        HashMap<Integer, Traffic> traffic = new HashMap<>();
-        try {
-            traffic = getTraffic();
-        } catch (SQLException ex) {
-            logger.error("Не удалось извлечь данные об обработанных звонках за день.\n"
-                    + "Время начала извлечения " + from.toString());
-            logger.error(ex.getMessage(), ex);
-        }
-
-        // Считывание необработанных звонков
-        ArrayList<Calls> calls = new ArrayList<>();
-        try {
-            calls = getCalls(from, to);
-        } catch (SQLException e) {
-            logger.error("Не удалось извлечь данные о звонках с "
-                    + from.toString() + " по " + to.toString() + "\n");
-            logger.error(e.getMessage(), e);
-        }
-
-        Calls call; // данные звонка абонента
-        Traffic tr; // текущий трафик абонента
-
-        // определение превышения трафика
-        for (int i = 0; i < calls.size(); i++) {
-            call = calls.get(i);
-            int contract = call.getContarct_id();
-            int typeUser = 0; // тип пользователя: 0 - физ. лицо, 1 - юр.лицо
-
+        if (isFail) {
+            // считывание данных об обработанных звонках за день
+            HashMap<Integer, Traffic> traffic = new HashMap<>();
             try {
-                typeUser = WhatUser(contract);
-            } catch (SQLException e) {
-                logger.error("Не удалось извлечь данные о пользователе c id = " + contract + "\n");
-                logger.error(e.getMessage(), e);
+                traffic = getTraffic();
+            } catch (SQLException ex) {
+                logger.error("Не удалось извлечь данные об обработанных звонках за день.\n"
+                        + "Время начала извлечения " + from.toString());
+                logger.error(ex.getMessage(), ex);
+                isFail = true;
             }
 
-            String typeCall = call.getCategories();
-            tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id()));
-            // tr = traffic.get(call.getContarct_id());
-
-            // если есть данные о звонках
-            if (traffic.containsKey(call.getContarct_id())) {
-
+            if (isFail) {
+                // Считывание необработанных звонков
+                ArrayList<Calls> calls = new ArrayList<>();
                 try {
-                    switch (typeCall) {
-                        case "1":
-                            tr.setInternational(tr.getInternational() + calls.get(i).getTime());
-                            break;
-                        case "2":
-                            tr.setIntercity(tr.getIntercity() + calls.get(i).getTime());
-                            break;
-                        case "3":
-                            tr.setInterzone(tr.getInterzone() + calls.get(i).getTime());
-                            break;
-                        default:
-                            throw new Exception("Неопознанный тип звонка");
-                    }
-                } catch (Exception ex) {
-                    logger.error("Не удалось распознать тип звонка. Полученный тип: " + typeCall + "\n");
-                    logger.error(ex.getMessage(), ex);
+                    calls = getCalls(from, to);
+                } catch (SQLException e) {
+                    logger.error("Не удалось извлечь данные о звонках с "
+                            + from.toString() + " по " + to.toString() + "\n");
+                    logger.error(e.getMessage(), e);
+                    isFail = true;
                 }
 
-                // получение информации о пользователях, которых нельзя блокировать
-                ArrayList<Users> users = new ArrayList<>();
-                try {
-                    users = getUsers();
-                } catch (SQLException ex) {
-                    logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
-                    logger.error(ex.getMessage(), ex);
-                }
+                if (isFail) {
+                    Calls call; // данные звонка абонента
+                    Traffic tr; // текущий трафик абонента
 
-                if (!users.contains(call.getContarct_id())) {
-                    try {
-                        switch (typeUser) {
-                            case 0:
-                                if (InZoneNatural(tr.getInterzone()) || IntercityNatural(tr.getIntercity()) || International(tr.getInternational())) {
-                                    LockContract(connectionSet, contract);
-                                    tr.setStatus((byte) 0);
-                                }
-                                break;
-                            case 1:
-                                if (InZoneLegal(tr.getInterzone()) || IntercityLegal(tr.getIntercity()) || International(tr.getInternational())) {
-                                    LockContract(connectionSet, contract);
-                                    tr.setStatus((byte) 0);
-                                }
-                                break;
-                            default:
-                                throw new Exception("Неопознанный тип абонента");
+                    // определение превышения трафика
+                    for (int i = 0; i < calls.size(); i++) {
+                        call = calls.get(i);
+                        int contract = call.getContarct_id();
+                        int typeUser = 0; // тип пользователя: 0 - физ. лицо, 1 - юр.лицо
+
+                        try {
+                            typeUser = WhatUser(contract);
+                        } catch (SQLException e) {
+                            logger.error("Не удалось извлечь данные о пользователе c id = " + contract + "\n");
+                            logger.error(e.getMessage(), e);
+                            isFail = true;
                         }
-                    } catch (Exception ex) {
-                        logger.error("Не удалось распознать абонента. Номер контракта: " + contract + ". Полученный тип абонента: " + typeUser);
-                        logger.error(ex.getMessage(), ex);
-                    }
+                        if (isFail) {
+                            String typeCall = call.getCategories();
+                            tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id()));
+                            // tr = traffic.get(call.getContarct_id());
 
-                    try {
-                        AddDataInTraffic(tr, from);
-                    } catch (SQLException ex) {
-                        logger.error("Ошибка вставки данных о звонках абонента: " + contract);
-                        logger.error(ex.getMessage(), ex);
-                    }
+                            // если есть данные о звонках
+                            if (traffic.containsKey(call.getContarct_id())) {
 
-                } else { // информации о звонках пользователя нет
-                    try {
-                        AddDataInTraffic(tr, from);
-                    } catch (SQLException ex) {
-                        logger.error("Ошибка вставки данных о звонках абонента: " + contract);
-                        logger.error(ex.getMessage(), ex);
-                    }
+                                try {
+                                    switch (typeCall) {
+                                        case "1":
+                                            tr.setInternational(tr.getInternational() + calls.get(i).getTime());
+                                            break;
+                                        case "2":
+                                            tr.setIntercity(tr.getIntercity() + calls.get(i).getTime());
+                                            break;
+                                        case "3":
+                                            tr.setInterzone(tr.getInterzone() + calls.get(i).getTime());
+                                            break;
+                                        default:
+                                            throw new Exception("Неопознанный тип звонка");
+                                    }
+                                } catch (Exception ex) {
+                                    logger.error("Не удалось распознать тип звонка. Полученный тип: " + typeCall + "\n");
+                                    logger.error(ex.getMessage(), ex);
+                                    isFail = true;
+                                }
+
+                                if (isFail) {
+                                    // получение информации о пользователях, которых нельзя блокировать
+                                    ArrayList<Users> users = new ArrayList<>();
+                                    try {
+                                        users = getUsers();
+                                    } catch (SQLException ex) {
+                                        logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
+                                        logger.error(ex.getMessage(), ex);
+                                        isFail = true;
+                                    }
+
+                                    if (isFail) {
+
+                                        if (!users.contains(call.getContarct_id())) {
+                                            try {
+                                                switch (typeUser) {
+                                                    case 0:
+                                                        if (InZoneNatural(tr.getInterzone()) || IntercityNatural(tr.getIntercity()) || International(tr.getInternational())) {
+                                                            LockContract(connectionSet, contract);
+                                                            tr.setStatus((byte) 0);
+                                                        }
+                                                        break;
+                                                    case 1:
+                                                        if (InZoneLegal(tr.getInterzone()) || IntercityLegal(tr.getIntercity()) || International(tr.getInternational())) {
+                                                            LockContract(connectionSet, contract);
+                                                            tr.setStatus((byte) 0);
+                                                        }
+                                                        break;
+                                                    default:
+                                                        throw new Exception("Неопознанный тип абонента");
+                                                }
+                                            } catch (Exception ex) {
+                                                logger.error("Не удалось распознать абонента. Номер контракта: " + contract + ". Полученный тип абонента: " + typeUser);
+                                                logger.error(ex.getMessage(), ex);
+                                                isFail = true;
+                                            }
+                                           
+                                            try {
+                                                AddDataInTraffic(tr, from);
+                                            } catch (SQLException ex) {
+                                                logger.error("Ошибка вставки данных о звонках абонента: " + contract);
+                                                logger.error(ex.getMessage(), ex);
+                                                isFail = true;
+                                            }
+
+                                        } else { // информации о звонках пользователя нет
+                                            try {
+                                                AddDataInTraffic(tr, from);
+                                            } catch (SQLException ex) {
+                                                logger.error("Ошибка вставки данных о звонках абонента: " + contract);
+                                                logger.error(ex.getMessage(), ex);
+                                                isFail = true;
+                                            }
+                                        }
+                                    }
+
+                                }
+                            }
+                        }
+                    } // for
                 }
             }
-        }
+
+        }// if
 
     }
 
