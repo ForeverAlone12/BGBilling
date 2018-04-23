@@ -67,5 +67,4 @@ public class Calls {
     public String getCategories() {
         return categories;
     }
-
 }

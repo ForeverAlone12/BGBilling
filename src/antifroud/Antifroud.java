@@ -92,6 +92,7 @@ public class Antifroud extends GlobalScriptBase {
 
                     // определение превышения трафика
                     for (int i = 0; i < calls.size(); i++) {
+                        isFail = false;
                         call = calls.get(i);
                         int contract = call.getContarct_id();
                         int typeUser = 0; // тип пользователя: 0 - физ. лицо, 1 - юр.лицо
@@ -167,7 +168,7 @@ public class Antifroud extends GlobalScriptBase {
                                                 logger.error(ex.getMessage(), ex);
                                                 isFail = true;
                                             }
-                                           
+
                                             try {
                                                 AddDataInTraffic(tr, from);
                                             } catch (SQLException ex) {
