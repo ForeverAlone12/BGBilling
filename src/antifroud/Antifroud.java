@@ -8,7 +8,6 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Calendar;
 
-import java.util.Date;
 import java.util.HashMap;
 import ru.bitel.bgbilling.kernel.script.server.dev.GlobalScriptBase;
 import ru.bitel.bgbilling.server.util.Setup;
@@ -69,18 +68,20 @@ public class Antifroud extends GlobalScriptBase {
         Calendar from = Calendar.getInstance();
 
         // --- удалить на боевой версии
-        from.set(Calendar.YEAR, 2018);
+        from.set(Calendar.YEAR, 2017);
         //месяцы в Calendar нумеруются с 0. Так исторически сложилось :)
         from.set(Calendar.MONTH, 7);
         from.set(Calendar.DAY_OF_MONTH, 1);
         from.set(Calendar.HOUR_OF_DAY, 0);
         from.set(Calendar.MINUTE, 0);
         from.set(Calendar.SECOND, 0);
-        // --- конец удаления       
+        // --- конец удаления    
 
         Calendar to = (Calendar) from.clone();
         to.add(Calendar.HOUR_OF_DAY, 1);
 
+        print("Начало выборки = " + from.getTime());
+        print("Конец выборки = " + to.getTime());
         // Попытка подключения к БД
         try {
             con = connectionSet.getConnection();
@@ -98,7 +99,8 @@ public class Antifroud extends GlobalScriptBase {
             logger.error("Не удалось извлечь данные об обработанных звонках за день.\n"
                     + "Время начала извлечения " + from.toString());
             logger.error(ex.getMessage(), ex);
-            throw new BGException();
+            throw new BGException("Не удалось извлечь данные об обработанных звонках за день.\n"
+                    + "Время начала извлечения " + from.toString());
         }
 
         // Считывание необработанных звонков
@@ -109,9 +111,13 @@ public class Antifroud extends GlobalScriptBase {
             logger.error("Не удалось извлечь данные о звонках с "
                     + from.toString() + " по " + to.toString() + "\n");
             logger.error(e.getMessage(), e);
-            throw new BGException();
+            throw new BGException("Не удалось извлечь данные о звонках с "
+                    + from.toString() + " по " + to.toString() + "\n");
         }
 
+        print("Количество считанных звонков = " + calls.size());
+        print("Количество данных трафика = " + traffic.size());
+        
         Calls call; // данные звонка абонента
         Traffic tr; // текущий трафик абонента
         // информация о пользователях, которых нельзя блокировать
@@ -121,21 +127,21 @@ public class Antifroud extends GlobalScriptBase {
         } catch (SQLException ex) {
             logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
             logger.error(ex.getMessage(), ex);
-            throw new BGException();
+            throw new BGException("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
         }
 
+        int typeUser = 0; // тип пользователя: 0 - физ. лицо, 1 - юр.лицо
         // определение превышения трафика
         for (int i = 0; i < calls.size(); i++) {
 
             call = calls.get(i);
-            int typeUser = 0; // тип пользователя: 0 - физ. лицо, 1 - юр.лицо
 
             try {
                 typeUser = WhatUser(call.getContarct_id());
             } catch (SQLException e) {
                 logger.error("Не удалось извлечь данные о пользователе c id = " + call.getContarct_id() + "\n");
                 logger.error(e.getMessage(), e);
-                throw new BGException();
+                throw new BGException("Не удалось извлечь данные о пользователе c id = " + call.getContarct_id() + "\n");
             }
             tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id()));
 
@@ -159,7 +165,7 @@ public class Antifroud extends GlobalScriptBase {
                 } catch (Exception ex) {
                     logger.error("Не удалось распознать тип звонка. Полученный тип: " + call.getCategories() + "\n");
                     logger.error(ex.getMessage(), ex);
-                    throw new BGException();
+                    throw new BGException("Не удалось распознать тип звонка. Полученный тип: " + call.getCategories() + "\n");
                 }
 
                 if (!users.contains(call.getContarct_id())) {
@@ -183,7 +189,7 @@ public class Antifroud extends GlobalScriptBase {
                     } catch (Exception ex) {
                         logger.error("Не удалось распознать абонента. Номер контракта: " + call.getContarct_id() + ". Полученный тип абонента: " + typeUser);
                         logger.error(ex.getMessage(), ex);
-                        throw new BGException();
+                        throw new BGException("Не удалось распознать абонента. Номер контракта: " + call.getContarct_id() + ". Полученный тип абонента: " + typeUser);
                     }
 
                     try {
@@ -191,18 +197,19 @@ public class Antifroud extends GlobalScriptBase {
                     } catch (SQLException ex) {
                         logger.error("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
                         logger.error(ex.getMessage(), ex);
-                        throw new BGException();
+                        throw new BGException("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
                     }
 
-                } else { // информации о звонках пользователя нет
-                    try {
-                        AddDataInTraffic(tr, from);
-                    } catch (SQLException ex) {
-                        logger.error("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
-                        logger.error(ex.getMessage(), ex);
-                        throw new BGException();
-                    }
                 }// if (users.contain...)
+            } else { // информации о звонках пользователя нет
+                try {
+                    AddDataInTraffic(tr, from);
+                } catch (SQLException ex) {
+                    logger.error("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
+                    logger.error(ex.getMessage(), ex);
+                    throw new BGException("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
+                }
+
             } // if (trafic.contain...
         }// for
     }
@@ -215,23 +222,24 @@ public class Antifroud extends GlobalScriptBase {
      */
     private HashMap<Integer, Traffic> getTraffic() throws SQLException {
         HashMap<Integer, Traffic> traffic = new HashMap<>();
-        String query = "SELECT id, contract_id, interzone, international, day, status \n"
+        String query = "SELECT id, contract_id, interzone, intercity, international, day, status \n"
                 + "FROM traffic \n"
                 + "WHERE status = false \n"
                 + "GROUP BY contract_id";
         PreparedStatement ps = con.prepareStatement(query);
         ResultSet rs = ps.executeQuery();
+
         while (rs.next()) {
-            int id = rs.getInt("id");
-            int contract_id = rs.getInt("contract_id");
-            int interzone = rs.getInt("interzone");
-            int intercity = rs.getInt("intercity");
-            int international = rs.getInt("international");
-            Date day = rs.getDate("day");
-            byte status = rs.getByte("status");
-            traffic.put(contract_id, new Traffic(id, contract_id, interzone, intercity, international, day, status));
+            traffic.put(rs.getInt("contract_id"), new Traffic(rs.getInt("id"),
+                    rs.getInt("contract_id"),
+                    rs.getInt("interzone"),
+                    rs.getInt("intercity"),
+                    rs.getInt("international"),
+                    rs.getDate("day"),
+                    rs.getByte("status")));
         }
         rs.close();
+
         return traffic;
     }
 
@@ -250,21 +258,22 @@ public class Antifroud extends GlobalScriptBase {
         String query = "SELECT calls.cid, calls.category, sum(calls.round_session_time) as time \n"
                 + "FROM (SELECT s.id, s.cid, s.from_number_164, s.to_number_164, s.round_session_time, \n"
                 + "IF (s.to_number_164 LIKE '8%', '1', \n"
-                + "(SUBSTR(s.to_number_164, 2, 3) = SUBSTR(s.from_number_164, 2, 3) \n"
-                + "or isIrkMobile(s.to_number_164),'3','2') \n"
+                + "IF (SUBSTR(s.to_number_164, 2, 3) = SUBSTR(s.from_number_164, 2, 3) \n"
+                + "or is_irk_mobile(s.to_number_164),'3','2') \n"
                 + ") category \n"
-                + "FROM ? s \n"
+                + "FROM log_session_18_201708_fraud s \n"
                 + "WHERE s.session_start BETWEEN ? AND ? \n"
                 + "LIMIT 10000) calls \n"
                 + "GROUP BY calls.cid, calls.category";
         PreparedStatement ps = con.prepareStatement(query);
-        ps.setString(1, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), 18));
-        ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(to));
-        ps.setTimestamp(3, TimeUtils.convertCalendarToTimestamp(from));
+        //ps.setString(1, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), 6));
+        ps.setTimestamp(1, TimeUtils.convertCalendarToTimestamp(to));
+        ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(from));
 
         ResultSet rs = ps.executeQuery();
+
         while (rs.next()) {
-            calls.add(new Calls(rs.getInt("contract_id"), rs.getString("category"), rs.getInt("time")));
+            calls.add(new Calls(rs.getInt("cid"), rs.getString("category"), rs.getInt("time")));
         }
         rs.close();
         return calls;
