@@ -14,6 +14,7 @@ import ru.bitel.bgbilling.kernel.script.server.dev.GlobalScriptBase;
 import ru.bitel.bgbilling.server.util.Setup;
 import ru.bitel.common.sql.ConnectionSet;
 import org.apache.log4j.Logger;
+import ru.bitel.bgbilling.common.BGException;
 import ru.bitel.bgbilling.kernel.contract.api.common.bean.Contract;
 import ru.bitel.bgbilling.kernel.contract.api.server.bean.ContractDao;
 import ru.bitel.bgbilling.server.util.ServerUtils;
@@ -23,7 +24,31 @@ public class Antifroud extends GlobalScriptBase {
 
     private Connection con;
     private ConnectionSet conSet;
-    private ParameterMap setting;
+
+    /**
+     * Лимит времени по местной связи для абонентов - физических лиц
+     */
+    private int limitSecondsNaturalZone;
+
+    /**
+     * Лимит времени по местной связи для абонентов - юридических лиц
+     */
+    private int limitSecondsLegalZone;
+
+    /**
+     * Лимит времени по междугородней связи для абонентов - физических лиц
+     */
+    private int limitSecondsNaturalIntercity;
+
+    /**
+     * Лимит времени по междугородней связи для абонентов - юридических лиц
+     */
+    private int limitSecondsLegalIntercity;
+
+    /**
+     * Лимит времени по международной связи
+     */
+    private int limitSecondsInternational;
 
     @Override
     public void execute(Setup setup, ConnectionSet connectionSet) throws Exception {
@@ -33,9 +58,12 @@ public class Antifroud extends GlobalScriptBase {
 
         conSet = connectionSet;
 
-        setting = setup.sub("fraud");
-
-        boolean isFail = false;
+        ParameterMap setting = setup.sub("fraud");
+        limitSecondsNaturalZone = setting.getInt("LIMIT_SECONDS_NATURAL_ZONE", 1200);
+        limitSecondsLegalZone = setting.getInt("LIMIT_SECONDS_LEGAL_ZONE", 60000);
+        limitSecondsNaturalIntercity = setting.getInt("LIMIT_SECONDS_NATURAL_INTERCITY", 1200);
+        limitSecondsLegalIntercity = setting.getInt("LIMIT_SECONDS_LEGAL_INTERCITY", 60000);
+        limitSecondsInternational = setting.getInt("LIMIT_SECONDS_INTERNATIONAL", 1200);
 
         // определение текущего времени
         Calendar from = Calendar.getInstance();
@@ -59,150 +87,129 @@ public class Antifroud extends GlobalScriptBase {
         } catch (Exception ex) {
             logger.error("Не удалось подключиться к БД\n");
             logger.error(ex.getMessage(), ex);
-            isFail = true;
+            throw new BGException("Ошибка подключения к БД в скрипте Antifroud");
         }
 
-        if (isFail) {
-            // считывание данных об обработанных звонках за день
-            HashMap<Integer, Traffic> traffic = new HashMap<>();
+        // считывание данных об обработанных звонках за день
+        HashMap<Integer, Traffic> traffic = new HashMap<>();
+        try {
+            traffic = getTraffic();
+        } catch (SQLException ex) {
+            logger.error("Не удалось извлечь данные об обработанных звонках за день.\n"
+                    + "Время начала извлечения " + from.toString());
+            logger.error(ex.getMessage(), ex);
+            throw new BGException();
+        }
+
+        // Считывание необработанных звонков
+        ArrayList<Calls> calls = new ArrayList<>();
+        try {
+            calls = getCalls(from, to);
+        } catch (SQLException e) {
+            logger.error("Не удалось извлечь данные о звонках с "
+                    + from.toString() + " по " + to.toString() + "\n");
+            logger.error(e.getMessage(), e);
+            throw new BGException();
+        }
+
+        Calls call; // данные звонка абонента
+        Traffic tr; // текущий трафик абонента
+        // информация о пользователях, которых нельзя блокировать
+        ArrayList<Users> users = new ArrayList<>();
+        try {
+            users = getUsers();
+        } catch (SQLException ex) {
+            logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
+            logger.error(ex.getMessage(), ex);
+            throw new BGException();
+        }
+
+        // определение превышения трафика
+        for (int i = 0; i < calls.size(); i++) {
+
+            call = calls.get(i);
+            int typeUser = 0; // тип пользователя: 0 - физ. лицо, 1 - юр.лицо
+
             try {
-                traffic = getTraffic();
-            } catch (SQLException ex) {
-                logger.error("Не удалось извлечь данные об обработанных звонках за день.\n"
-                        + "Время начала извлечения " + from.toString());
-                logger.error(ex.getMessage(), ex);
-                isFail = true;
+                typeUser = WhatUser(call.getContarct_id());
+            } catch (SQLException e) {
+                logger.error("Не удалось извлечь данные о пользователе c id = " + call.getContarct_id() + "\n");
+                logger.error(e.getMessage(), e);
+                throw new BGException();
             }
+            tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id()));
 
-            if (isFail) {
-                // Считывание необработанных звонков
-                ArrayList<Calls> calls = new ArrayList<>();
+            // если есть данные о звонках
+            if (traffic.containsKey(call.getContarct_id())) {
+
                 try {
-                    calls = getCalls(from, to);
-                } catch (SQLException e) {
-                    logger.error("Не удалось извлечь данные о звонках с "
-                            + from.toString() + " по " + to.toString() + "\n");
-                    logger.error(e.getMessage(), e);
-                    isFail = true;
+                    switch (call.getCategories()) {
+                        case "1":
+                            tr.setInternational(tr.getInternational() + calls.get(i).getTime());
+                            break;
+                        case "2":
+                            tr.setIntercity(tr.getIntercity() + calls.get(i).getTime());
+                            break;
+                        case "3":
+                            tr.setInterzone(tr.getInterzone() + calls.get(i).getTime());
+                            break;
+                        default:
+                            throw new Exception("Неопознанный тип звонка");
+                    }
+                } catch (Exception ex) {
+                    logger.error("Не удалось распознать тип звонка. Полученный тип: " + call.getCategories() + "\n");
+                    logger.error(ex.getMessage(), ex);
+                    throw new BGException();
                 }
 
-                if (isFail) {
-                    Calls call; // данные звонка абонента
-                    Traffic tr; // текущий трафик абонента
-
-                    // определение превышения трафика
-                    for (int i = 0; i < calls.size(); i++) {
-                        isFail = false;
-                        call = calls.get(i);
-                        int contract = call.getContarct_id();
-                        int typeUser = 0; // тип пользователя: 0 - физ. лицо, 1 - юр.лицо
-
-                        try {
-                            typeUser = WhatUser(contract);
-                        } catch (SQLException e) {
-                            logger.error("Не удалось извлечь данные о пользователе c id = " + contract + "\n");
-                            logger.error(e.getMessage(), e);
-                            isFail = true;
-                        }
-                        if (isFail) {
-                            String typeCall = call.getCategories();
-                            tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id()));
-                            // tr = traffic.get(call.getContarct_id());
-
-                            // если есть данные о звонках
-                            if (traffic.containsKey(call.getContarct_id())) {
-
-                                try {
-                                    switch (typeCall) {
-                                        case "1":
-                                            tr.setInternational(tr.getInternational() + calls.get(i).getTime());
-                                            break;
-                                        case "2":
-                                            tr.setIntercity(tr.getIntercity() + calls.get(i).getTime());
-                                            break;
-                                        case "3":
-                                            tr.setInterzone(tr.getInterzone() + calls.get(i).getTime());
-                                            break;
-                                        default:
-                                            throw new Exception("Неопознанный тип звонка");
-                                    }
-                                } catch (Exception ex) {
-                                    logger.error("Не удалось распознать тип звонка. Полученный тип: " + typeCall + "\n");
-                                    logger.error(ex.getMessage(), ex);
-                                    isFail = true;
+                if (!users.contains(call.getContarct_id())) {
+                    try {
+                        switch (typeUser) {
+                            case 0:
+                                if (InZoneNatural(tr.getInterzone()) || IntercityNatural(tr.getIntercity()) || International(tr.getInternational())) {
+                                    LockContract(call.getContarct_id());
+                                    tr.setStatus((byte) 0);
                                 }
-
-                                if (isFail) {
-                                    // получение информации о пользователях, которых нельзя блокировать
-                                    ArrayList<Users> users = new ArrayList<>();
-                                    try {
-                                        users = getUsers();
-                                    } catch (SQLException ex) {
-                                        logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
-                                        logger.error(ex.getMessage(), ex);
-                                        isFail = true;
-                                    }
-
-                                    if (isFail) {
-
-                                        if (!users.contains(call.getContarct_id())) {
-                                            try {
-                                                switch (typeUser) {
-                                                    case 0:
-                                                        if (InZoneNatural(tr.getInterzone()) || IntercityNatural(tr.getIntercity()) || International(tr.getInternational())) {
-                                                            LockContract(connectionSet, contract);
-                                                            tr.setStatus((byte) 0);
-                                                        }
-                                                        break;
-                                                    case 1:
-                                                        if (InZoneLegal(tr.getInterzone()) || IntercityLegal(tr.getIntercity()) || International(tr.getInternational())) {
-                                                            LockContract(connectionSet, contract);
-                                                            tr.setStatus((byte) 0);
-                                                        }
-                                                        break;
-                                                    default:
-                                                        throw new Exception("Неопознанный тип абонента");
-                                                }
-                                            } catch (Exception ex) {
-                                                logger.error("Не удалось распознать абонента. Номер контракта: " + contract + ". Полученный тип абонента: " + typeUser);
-                                                logger.error(ex.getMessage(), ex);
-                                                isFail = true;
-                                            }
-
-                                            try {
-                                                AddDataInTraffic(tr, from);
-                                            } catch (SQLException ex) {
-                                                logger.error("Ошибка вставки данных о звонках абонента: " + contract);
-                                                logger.error(ex.getMessage(), ex);
-                                                isFail = true;
-                                            }
-
-                                        } else { // информации о звонках пользователя нет
-                                            try {
-                                                AddDataInTraffic(tr, from);
-                                            } catch (SQLException ex) {
-                                                logger.error("Ошибка вставки данных о звонках абонента: " + contract);
-                                                logger.error(ex.getMessage(), ex);
-                                                isFail = true;
-                                            }
-                                        }
-                                    }
-
+                                break;
+                            case 1:
+                                if (InZoneLegal(tr.getInterzone()) || IntercityLegal(tr.getIntercity()) || International(tr.getInternational())) {
+                                    LockContract(call.getContarct_id());
+                                    tr.setStatus((byte) 0);
                                 }
-                            }
+                                break;
+                            default:
+                                throw new Exception("Неопознанный тип абонента");
                         }
-                    } // for
-                }
-            }
+                    } catch (Exception ex) {
+                        logger.error("Не удалось распознать абонента. Номер контракта: " + call.getContarct_id() + ". Полученный тип абонента: " + typeUser);
+                        logger.error(ex.getMessage(), ex);
+                        throw new BGException();
+                    }
 
-        }// if
+                    try {
+                        AddDataInTraffic(tr, from);
+                    } catch (SQLException ex) {
+                        logger.error("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
+                        logger.error(ex.getMessage(), ex);
+                        throw new BGException();
+                    }
 
+                } else { // информации о звонках пользователя нет
+                    try {
+                        AddDataInTraffic(tr, from);
+                    } catch (SQLException ex) {
+                        logger.error("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
+                        logger.error(ex.getMessage(), ex);
+                        throw new BGException();
+                    }
+                }// if (users.contain...)
+            } // if (trafic.contain...
+        }// for
     }
 
     /**
-     * Получение данных о трафике абонента
+     * Получение данных о трафике абонентов
      *
-     * @param con
      * @return
      * @throws SQLException
      */
@@ -224,26 +231,22 @@ public class Antifroud extends GlobalScriptBase {
             byte status = rs.getByte("status");
             traffic.put(contract_id, new Traffic(id, contract_id, interzone, intercity, international, day, status));
         }
+        rs.close();
         return traffic;
     }
 
     /**
-     * выбор данных о звонках в виде "номер_договора, категория звонка,
-     * длительность звонка"
+     * Выбор данных о звонках
      *
-     * @param con
-     * @param from
-     * @param to
-     * @return
+     * @param from дата начало выборки
+     * @param to дата конца выборки
+     * @return данные о звонках в виде "номер_договора, категория звонка,
+     * длительность звонка"
      * @throws SQLException
      */
     private ArrayList<Calls> getCalls(Calendar from, Calendar to) throws SQLException {
         ArrayList<Calls> calls = new ArrayList<>();
-        // 
-        // входные параметры:
-        // 1) с какого  периода произодится выборка
-        // 2) по каккой период производится выборка
-        // 3) имя таблицы, из которой производится выборка
+
         String query = "SELECT calls.cid, calls.category, sum(calls.round_session_time) as time \n"
                 + "FROM (SELECT s.id, s.cid, s.from_number_164, s.to_number_164, s.round_session_time, \n"
                 + "IF (s.to_number_164 LIKE '8%', '1', \n"
@@ -261,18 +264,15 @@ public class Antifroud extends GlobalScriptBase {
 
         ResultSet rs = ps.executeQuery();
         while (rs.next()) {
-            int contract_id = rs.getInt("contract_id");
-            String categories = rs.getString("category");
-            int session_time = rs.getInt("time");
-            calls.add(new Calls(contract_id, categories, session_time));
+            calls.add(new Calls(rs.getInt("contract_id"), rs.getString("category"), rs.getInt("time")));
         }
+        rs.close();
         return calls;
     }
 
     /**
      * Определение является абонент юридичиским или физическим лицом
      *
-     * @param con
      * @param contract номер контракта
      * @return 0- физ. лицо, 1 - юр.лицо
      * @throws SQLException
@@ -289,6 +289,7 @@ public class Antifroud extends GlobalScriptBase {
         while (rs.next()) {
             typeUser = rs.getInt("fc");
         }
+        rs.close();
         return typeUser;
     }
 
@@ -306,19 +307,17 @@ public class Antifroud extends GlobalScriptBase {
         PreparedStatement ps = con.prepareStatement(query);
         ResultSet rs = ps.executeQuery();
         while (rs.next()) {
-            int id = rs.getInt("id");
-            int cid = rs.getInt("cid");
-            users.add(new Users(id, cid));
+            users.add(new Users(rs.getInt("id"), rs.getInt("cid")));
         }
+        rs.close();
         return users;
     }
 
     /**
      * Добавление информации о трафике абонента
      *
-     * @param con
      * @param tr данные трафика
-     * @param date
+     * @param date дата добавления
      * @throws SQLException
      */
     private void AddDataInTraffic(Traffic tr, Calendar date) throws SQLException {
@@ -338,12 +337,11 @@ public class Antifroud extends GlobalScriptBase {
     /**
      * Блокировка абонента
      *
-     * @param connectionSet
      * @param contract номер контракта
      * @throws Exception
      */
-    private void LockContract(ConnectionSet connectionSet, int contract) throws Exception {
-        ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
+    private void LockContract(int contract) throws Exception {
+        ContractDao cd = new ContractDao(conSet.getConnection(), 0);
         Contract c = cd.get(contract);
         c.setStatus((byte) 4);
         cd.update(c);
@@ -357,7 +355,7 @@ public class Antifroud extends GlobalScriptBase {
      * @return true - лимит превышен, false - лимит не превышен
      */
     private boolean InZoneNatural(int session) {
-        return session > setting.getInt("LIMIT_SECONDS_NATURAL_ZONE", 1200);
+        return session > limitSecondsNaturalZone;
     }
 
     /**
@@ -368,7 +366,7 @@ public class Antifroud extends GlobalScriptBase {
      * @return true - лимит превышен, false - лимит не превышен
      */
     private boolean InZoneLegal(int session) {
-        return session > setting.getInt("LIMIT_SECONDS_LEGAL_ZONE", 60000);
+        return session > limitSecondsLegalZone;
     }
 
     /**
@@ -379,7 +377,7 @@ public class Antifroud extends GlobalScriptBase {
      * @return true - лимит превышен, false - лимит не превышен
      */
     private boolean IntercityNatural(int session) {
-        return session > setting.getInt("LIMIT_SECONDS_NATURAL_INTERCITY", 1200);
+        return session > limitSecondsNaturalIntercity;
     }
 
     /**
@@ -390,7 +388,7 @@ public class Antifroud extends GlobalScriptBase {
      * @return true - лимит превышен, false - лимит не превышен
      */
     private boolean IntercityLegal(int session) {
-        return session > setting.getInt("LIMIT_SECONDS_LEGAL_INTERCITY", 60000);
+        return session > limitSecondsLegalIntercity;
     }
 
     /**
@@ -400,6 +398,6 @@ public class Antifroud extends GlobalScriptBase {
      * @return true - лимит превышен, false - лимит не превышен
      */
     private boolean International(int session) {
-        return session > setting.getInt("LIMIT_SECONDS_INTERNATIONAL", 1200);
+        return session > limitSecondsInternational;
     }
 }

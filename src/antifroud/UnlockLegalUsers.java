@@ -6,6 +6,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import org.apache.log4j.Logger;
+import ru.bitel.bgbilling.common.BGException;
 import ru.bitel.bgbilling.kernel.contract.api.common.bean.Contract;
 import ru.bitel.bgbilling.kernel.contract.api.server.bean.ContractDao;
 import ru.bitel.bgbilling.kernel.script.server.dev.GlobalScriptBase;
@@ -31,10 +32,9 @@ public class UnlockLegalUsers extends GlobalScriptBase {
         } catch (Exception ex) {
             logger.error("Не удалось подключиться к БД\n");
             logger.error(ex.getMessage(), ex);
+            throw new BGException();
         }
 
-        // Выборка юридических лиц
-        ArrayList<LegalUser> legalUser = new ArrayList<>();
         try {
             String query = "Select id, fc, cid \n"
                     + "FROM lockabonent \n"
@@ -42,27 +42,39 @@ public class UnlockLegalUsers extends GlobalScriptBase {
             PreparedStatement ps = con.prepareStatement(query);
             ResultSet rs = ps.executeQuery();
 
-            while (rs.next()) {
-                // снятие блокировки с абонентов-юридических лиц
-                int contract = rs.getInt("cid");
-                int fc = rs.getInt("fc");
-                ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
-                Contract c = cd.get(contract);
-                c.setStatus((byte) 0);
-                cd.update(c);
+            ContractDao cd;
+            Contract c;
 
-                try {
-                    query = "DELETE FROM lockabonent  WHERE fc = " + fc;
+            con = connectionSet.getConnection();
+            boolean autocommit = con.getAutoCommit();
+            con.setAutoCommit(false);
+
+            try {
+                while (rs.next()) {
+                    // снятие блокировки с абонентов-юридических лиц
+                    cd = new ContractDao(connectionSet.getConnection(), 0);
+                    c = cd.get(rs.getInt("cid"));
+                    c.setStatus((byte) 0);
+                    cd.update(c);
+
+                    query = "DELETE FROM lockabonent  WHERE fc = " + rs.getInt("fc");
                     ps = con.prepareStatement(query);
                     ps.executeUpdate();
-                } catch (SQLException ex) {
-                    logger.error("Не удалось убрать данные о заблокированных абонентов-юридических лиц\n");
-                    logger.error(ex.getMessage(), ex);
+
                 }
+                con.setAutoCommit(autocommit);
+            } catch (SQLException ex) {
+                logger.error("Не удалось снять блокировку с абонента (cid = " + rs.getInt("cid") + ")\n");
+                logger.error(ex.getMessage(), ex);
+                throw new BGException();
+            } finally {
+                rs.close();
             }
+
         } catch (SQLException ex) {
             logger.error("Не удалось извлечь данные о юридических лицах\n");
             logger.error(ex.getMessage(), ex);
+            throw new BGException();
         }
 
     }

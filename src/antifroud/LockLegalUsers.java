@@ -6,6 +6,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import org.apache.log4j.Logger;
+import ru.bitel.bgbilling.common.BGException;
 import ru.bitel.bgbilling.kernel.contract.api.common.bean.Contract;
 import ru.bitel.bgbilling.kernel.contract.api.server.bean.ContractDao;
 import ru.bitel.bgbilling.kernel.script.server.dev.GlobalScriptBase;
@@ -33,10 +34,9 @@ public class LockLegalUsers extends GlobalScriptBase {
         } catch (Exception ex) {
             logger.error("Не удалось подключиться к БД\n");
             logger.error(ex.getMessage(), ex);
+            throw new BGException();
         }
 
-        // Выборка юридических лиц
-        ArrayList<LegalUser> legalUser = new ArrayList<>();
         try {
             String query = "Select id, fc \n"
                     + "FROM contract c \n"
@@ -51,11 +51,15 @@ public class LockLegalUsers extends GlobalScriptBase {
 
             ContractDao cd;
             Contract c;
+
+            con = connectionSet.getConnection();
+            boolean autocommit = con.getAutoCommit();
+            con.setAutoCommit(false);
+
             while (rs.next()) {
-                int contract = rs.getInt("id");
                 // блокировка юридических лиц
                 cd = new ContractDao(connectionSet.getConnection(), 0);
-                c = cd.get(contract);
+                c = cd.get(rs.getInt("id"));
                 c.setStatus((byte) 4);
                 cd.update(c);
 
@@ -65,16 +69,23 @@ public class LockLegalUsers extends GlobalScriptBase {
                             + " VALUES ('', ?, ?)";
                     ps = con.prepareStatement(query);
                     ps.setInt(1, 1);
-                    ps.setInt(2, contract);
+                    ps.setInt(2, rs.getInt("id"));
                     ps.executeUpdate();
+                    
                 } catch (SQLException ex) {
                     logger.error("Не удалось внести данные о заблокированных абонентов-юридических лиц\n");
                     logger.error(ex.getMessage(), ex);
+                    throw new BGException();
                 }
             }
+
+            con.setAutoCommit(autocommit);
+            rs.close();
+            
         } catch (SQLException ex) {
             logger.error("Не удалось извлечь данные о юридических лицах\n");
             logger.error(ex.getMessage(), ex);
+            throw new BGException();
         }
     }
 

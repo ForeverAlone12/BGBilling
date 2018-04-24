@@ -5,10 +5,9 @@
         <group>
             <file>file:/D:/GitHub/BGBilling/src/antifroud/LockLegalUsers.java</file>
             <file>file:/D:/GitHub/BGBilling/src/antifroud/Users.java</file>
-            <file>file:/D:/GitHub/BGBilling/src/antifroud/LegalUser.java</file>
             <file>file:/D:/GitHub/BGBilling/src/antifroud/Calls.java</file>
-            <file>file:/D:/GitHub/BGBilling/src/antifroud/Antifroud.java</file>
             <file>file:/D:/GitHub/BGBilling/src/antifroud/Traffic.java</file>
+            <file>file:/D:/GitHub/BGBilling/src/antifroud/Antifroud.java</file>
             <file>file:/D:/GitHub/BGBilling/src/antifroud/UnlockUser.java</file>
             <file>file:/D:/GitHub/BGBilling/src/antifroud/UnlockLegalUsers.java</file>
         </group>
