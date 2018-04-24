@@ -67,6 +67,10 @@ public class Antifroud extends GlobalScriptBase {
         // определение текущего времени
         Calendar from = Calendar.getInstance();
 
+        
+        
+        
+        /// РАЗОБРАТЬСЯ ЧТО ТАКОЕ FROM и TO
         // --- удалить на боевой версии
         from.set(Calendar.YEAR, 2017);
         //месяцы в Calendar нумеруются с 0. Так исторически сложилось :)
