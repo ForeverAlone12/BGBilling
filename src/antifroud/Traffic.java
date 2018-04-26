@@ -18,7 +18,7 @@ public class Traffic {
      * @param intercity потраченные минуты по междугородним звонкам
      * @param international потраченные минуты по международным звонкам
      * @param day день звонка
-     * @param status статус абонента
+     * @param status статус догвора
      */
     Traffic(int id, int contract_id, int interzone, int intercity, int international, Date day, int status) {
         this.id = id;

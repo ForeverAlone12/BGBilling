@@ -1,24 +1,23 @@
 package antifroud;
 
-import bitel.billing.common.TimeUtils;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Calendar;
-
 import java.util.HashMap;
-import ru.bitel.bgbilling.kernel.script.server.dev.GlobalScriptBase;
-import ru.bitel.bgbilling.server.util.Setup;
-import ru.bitel.common.sql.ConnectionSet;
+import java.sql.ResultSet;
+import java.util.Calendar;
+import java.sql.Connection;
+import java.util.ArrayList;
+import java.sql.SQLException;
 import org.apache.log4j.Logger;
+import java.sql.PreparedStatement;
+import ru.bitel.common.ParameterMap;
+import bitel.billing.common.TimeUtils;
+import ru.bitel.common.sql.ConnectionSet;
+import ru.bitel.bgbilling.server.util.Setup;
 import ru.bitel.bgbilling.common.BGException;
 import ru.bitel.bgbilling.kernel.contract.api.common.bean.Contract;
+import ru.bitel.bgbilling.kernel.script.server.dev.GlobalScriptBase;
 import ru.bitel.bgbilling.kernel.contract.api.server.bean.ContractDao;
-import ru.bitel.common.ParameterMap;
 
-public class Antifroud extends GlobalScriptBase {
+public class Antifraud extends GlobalScriptBase {
 
     private Connection con;
     private ConnectionSet conSet;
@@ -58,17 +57,16 @@ public class Antifroud extends GlobalScriptBase {
 
         conSet = connectionSet;
 
-        ParameterMap setting = setup.sub("fraud");
-        limitSecondsNaturalZone = setting.getInt("LIMIT_SECONDS_NATURAL_ZONE", 1200);
+        ParameterMap setting = setup.sub("ru.dsi.fraud");
+        limitSecondsNaturalZone = setting.getInt("LIMIT_SECONDS_NATURAL_ZONE", 12000);
         limitSecondsLegalZone = setting.getInt("LIMIT_SECONDS_LEGAL_ZONE", 60000);
-        limitSecondsNaturalIntercity = setting.getInt("LIMIT_SECONDS_NATURAL_INTERCITY", 1200);
+        limitSecondsNaturalIntercity = setting.getInt("LIMIT_SECONDS_NATURAL_INTERCITY", 12000);
         limitSecondsLegalIntercity = setting.getInt("LIMIT_SECONDS_LEGAL_INTERCITY", 60000);
-        limitSecondsInternational = setting.getInt("LIMIT_SECONDS_INTERNATIONAL", 1200);
+        limitSecondsInternational = setting.getInt("LIMIT_SECONDS_INTERNATIONAL", 7200);
 
         // определение текущего времени
         Calendar to = Calendar.getInstance();
 
-        /// РАЗОБРАТЬСЯ ЧТО ТАКОЕ FROM и TO        
         // --- удалить на боевой версии
         to.set(Calendar.YEAR, 2017);
         //месяцы в Calendar нумеруются с 0. Так исторически сложилось :)
@@ -96,7 +94,7 @@ public class Antifroud extends GlobalScriptBase {
         // считывание данных об обработанных звонках за день
         HashMap<Integer, Traffic> traffic = new HashMap<>();
         try {
-            traffic = getTraffic();
+            traffic = getTraffic(from);
         } catch (SQLException ex) {
             logger.error("Не удалось извлечь данные об обработанных звонках за день.\n"
                     + "Время начала извлечения " + from.toString());
@@ -122,6 +120,8 @@ public class Antifroud extends GlobalScriptBase {
 
         Calls call; // данные звонка абонента
         Traffic tr; // текущий трафик абонента
+        ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
+        Contract contract;
         // информация о пользователях, которых нельзя блокировать
         ArrayList<Users> users = new ArrayList<>();
         try {
@@ -132,23 +132,22 @@ public class Antifroud extends GlobalScriptBase {
             throw new BGException("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
         }
 
-        int typeUser = 0; // тип пользователя: 0 - физ. лицо, 1 - юр.лицо
         // определение превышения трафика
         for (int i = 0; i < calls.size(); i++) {
+            print("№ необработанного звонка: " + (i + 1));
 
-          
-
+            // информация о необработанном звонке
             call = calls.get(i);
 
-            try {
-                typeUser = WhatUser(call.getContarct_id());
-            } catch (SQLException e) {
-                logger.error("Не удалось извлечь данные о пользователе c id = " + call.getContarct_id() + "\n");
-                logger.error(e.getMessage(), e);
-                throw new BGException("Не удалось извлечь данные о пользователе c id = " + call.getContarct_id() + "\n");
-            }
+            contract = cd.get(call.getContarct_id());
+            if (contract == null) { print("NULL CONTRACT " + call.getContarct_id()); }
+            print(contract.getId());
+            
+
+            // получение данных о трафике абонента
             tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id()));
 
+            // вычисление длительности разговора
             try {
                 switch (call.getCategories()) {
                     case "1":
@@ -164,25 +163,26 @@ public class Antifroud extends GlobalScriptBase {
                         throw new Exception("Неопознанный тип звонка");
                 }
             } catch (Exception ex) {
-                logger.error("Не удалось распознать тип звонка. Полученный тип: " + call.getCategories() + "\n");
+                logger.error("Не удалось распознать тип звонка. Полученный тип : " + call.getCategories() + "\n");
                 logger.error(ex.getMessage(), ex);
                 throw new BGException("Не удалось распознать тип звонка. Полученный тип: " + call.getCategories() + "\n");
             }
 
             // если есть данные о звонках
             if (traffic.containsKey(call.getContarct_id())) {
-                print("№ звонка: " + i);
+
                 print("Присутствует в базе : " + tr.getContract_id());
                 print("Время внутризонового звонка: " + tr.getInterzone());
                 print("Время междугороднего звонка: " + tr.getIntercity());
                 print("Время международнего звонка: " + tr.getInternational());
 
-                // проверка на превышение трафик апроизводится для абонентов,
+                // проверка на превышение трафик производится только для абонентов,
                 // не входящих в список исключений
                 if (!users.contains(call.getContarct_id())) {
-            
+
+                    print("Тип договора: " + contract.getPersonType());
                     try {
-                        switch (typeUser) {
+                        switch (contract.getPersonType()) {
                             case 0:
                                 if (InZoneNatural(tr.getInterzone()) || IntercityNatural(tr.getIntercity()) || International(tr.getInternational())) {
                                     LockContract(call.getContarct_id());
@@ -196,13 +196,21 @@ public class Antifroud extends GlobalScriptBase {
                                 }
                                 break;
                             default:
-                                throw new Exception("Неопознанный тип абонента");
+                                throw new Exception("Неопознанный тип договора");
                         }
-                    } catch (Exception ex) {
-                        logger.error("Не удалось распознать абонента. Номер контракта: " + call.getContarct_id() + ". Полученный тип абонента: " + typeUser);
-                        logger.error(ex.getMessage(), ex);
-                        throw new BGException("Не удалось распознать абонента. Номер контракта: " + call.getContarct_id() + ". Полученный тип абонента: " + typeUser);
+                    } 
+                    catch(NullPointerException e){
+                         logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() );
+                        logger.error(e.getMessage(), e);
+                        throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id());
                     }
+                    catch (Exception ex) {
+                        logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договра: " + contract.getPersonType());
+                        logger.error(ex.getMessage(), ex);
+                        throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договора: " + contract.getPersonType());
+                    }
+                    
+                    
 
                     try {
                         AddDataInTraffic(tr, from);
@@ -214,19 +222,19 @@ public class Antifroud extends GlobalScriptBase {
 
                 }// if (users.contain...)
             } else { // информации о звонках пользователя нет
-                print("№ звонка: " + i);
                 print("Нет в базе : " + tr.getContract_id());
                 print("Время внутризонового звонка: " + tr.getInterzone());
                 print("Время междугороднего звонка: " + tr.getIntercity());
                 print("Время международнего звонка: " + tr.getInternational());
                 try {
+                    // добавление данных в таблицу
                     AddDataInTraffic(tr, from);
+                    traffic.put(tr.getContract_id(), tr);
                 } catch (SQLException ex) {
                     logger.error("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
                     logger.error(ex.getMessage(), ex);
                     throw new BGException("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
                 }
-
             } // if (trafic.contain...
         }// for
 
@@ -240,29 +248,28 @@ public class Antifroud extends GlobalScriptBase {
      * @return
      * @throws SQLException
      */
-    private HashMap<Integer, Traffic> getTraffic() throws SQLException {
+    private HashMap<Integer, Traffic> getTraffic(Calendar now) throws SQLException {
         HashMap<Integer, Traffic> traffic = new HashMap<>();
         String query = "SELECT `id`, `cid`, `interzone`, `intercity`, `international`, `day`, `status` \n"
                 + "FROM traffic \n"
-                + "WHERE `status` = 0"
-                + " \n"
+                + "WHERE `status` = 0 AND `day`=?"
                 + "GROUP BY `cid`";
-        PreparedStatement ps = con.prepareStatement(query);
-        ResultSet rs = ps.executeQuery();
-
-        while (rs.next()) {
-            traffic.put(rs.getInt("cid"), new Traffic(rs.getInt("id"),
-                    rs.getInt("cid"),
-                    rs.getInt("interzone"),
-                    rs.getInt("intercity"),
-                    rs.getInt("international"),
-                    rs.getDate("day"),
-                    rs.getByte("status")));
+        try (PreparedStatement ps = con.prepareStatement(query)) {
+            ps.setTimestamp(1, TimeUtils.convertCalendarToTimestamp(now));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    traffic.put(rs.getInt("cid"), new Traffic(rs.getInt("id"),
+                            rs.getInt("cid"),
+                            rs.getInt("interzone"),
+                            rs.getInt("intercity"),
+                            rs.getInt("international"),
+                            rs.getDate("day"),
+                            rs.getByte("status")));
+                }
+            }
+        } finally {
+            return traffic;
         }
-
-        rs.close();
-        ps.close();
-        return traffic;
     }
 
     /**
@@ -287,43 +294,20 @@ public class Antifroud extends GlobalScriptBase {
                 + "WHERE s.`session_start` BETWEEN ? AND ? \n"
                 + "LIMIT 10000) calls \n"
                 + "GROUP BY calls.`cid`, calls.`category`";
-        PreparedStatement ps = con.prepareStatement(query);
-        //ps.setString(1, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), 6));
-        ps.setTimestamp(1, TimeUtils.convertCalendarToTimestamp(from));
-        ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(to));
 
-        ResultSet rs = ps.executeQuery();
-        while (rs.next()) {
-            calls.add(new Calls(rs.getInt("cid"), rs.getString("category"), rs.getInt("time")));
+        try (PreparedStatement ps = con.prepareStatement(query)) {
+            //ps.setString(1, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), 6));
+            ps.setTimestamp(1, TimeUtils.convertCalendarToTimestamp(from));
+            ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(to));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    calls.add(new Calls(rs.getInt("cid"), rs.getString("category"), rs.getInt("time")));
+                }
+            }
+        } finally {
+            return calls;
         }
-        rs.close();
-        ps.close();
 
-        return calls;
-    }
-
-    /**
-     * Определение является абонент юридичиским или физическим лицом
-     *
-     * @param contract номер контракта
-     * @return 0- физ. лицо, 1 - юр.лицо
-     * @throws SQLException
-     */
-    private int WhatUser(int contract) throws SQLException {
-        // определение пользователя (физическое или юридическое лицо)
-        String query = "SELECT `id`, `fc` \n"
-                + "FROM contract \n"
-                + "WHERE `id`=" + contract;
-        PreparedStatement ps = con.prepareStatement(query);
-        ResultSet rs = ps.executeQuery();
-
-        int typeUser = -1;
-        while (rs.next()) {
-            typeUser = rs.getInt("fc");
-        }
-        rs.close();
-        ps.close();
-        return typeUser;
     }
 
     /**
@@ -337,14 +321,14 @@ public class Antifroud extends GlobalScriptBase {
         ArrayList<Users> users = new ArrayList<>();
         String query = "SELECT `id`, `cid` \n"
                 + "FROM exception";
-        PreparedStatement ps = con.prepareStatement(query);
-        ResultSet rs = ps.executeQuery();
-        while (rs.next()) {
-            users.add(new Users(rs.getInt("id"), rs.getInt("cid")));
+        try (PreparedStatement ps = con.prepareStatement(query);
+                ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                users.add(new Users(rs.getInt("id"), rs.getInt("cid")));
+            }
+        } finally {
+            return users;
         }
-        rs.close();
-        ps.close();
-        return users;
     }
 
     /**
@@ -357,20 +341,20 @@ public class Antifroud extends GlobalScriptBase {
     private void AddDataInTraffic(Traffic tr, Calendar date) throws SQLException {
         String query = "INSERT INTO traffic (`id`,`cid`, `interzone`, `intercity`, `international`, `day`, `status`)\n"
                 + "VALUES ('',?,?,?,?,?,?) ON DUPLICATE KEY UPDATE \n"
-                + "interzone=interzone+?, intercity=intercity+?, international=international+?;";
+                + "interzone=interzone+?, intercity=intercity+?, international=international+?";
 
-        PreparedStatement ps = con.prepareStatement(query);
-        ps.setInt(1, tr.getContract_id());
-        ps.setInt(2, tr.getInterzone());
-        ps.setInt(3, tr.getIntercity());
-        ps.setInt(4, tr.getInternational());
-        ps.setDate(5, TimeUtils.convertCalendarToSqlDate(date));
-        ps.setInt(6, tr.getStatus());
-        ps.setInt(7, tr.getInterzone());
-        ps.setInt(8, tr.getIntercity());
-        ps.setInt(9, tr.getInternational());
-        ps.executeUpdate();
-        ps.close();
+        try (PreparedStatement ps = con.prepareStatement(query)) {
+            ps.setInt(1, tr.getContract_id());
+            ps.setInt(2, tr.getInterzone());
+            ps.setInt(3, tr.getIntercity());
+            ps.setInt(4, tr.getInternational());
+            ps.setDate(5, TimeUtils.convertCalendarToSqlDate(date));
+            ps.setInt(6, tr.getStatus());
+            ps.setInt(7, tr.getInterzone());
+            ps.setInt(8, tr.getIntercity());
+            ps.setInt(9, tr.getInternational());
+            ps.executeUpdate();
+        }
     }
 
     /**
@@ -384,10 +368,11 @@ public class Antifroud extends GlobalScriptBase {
         con = conSet.getConnection();
         boolean autocommit = con.getAutoCommit();
         con.setAutoCommit(false);
-        
+
         // изменение статуса контракта в системе BGBilling
         ContractDao cd = new ContractDao(conSet.getConnection(), 0);
         Contract c = cd.get(contract);
+
         c.setStatus((byte) 4);
         cd.update(c);
 
@@ -395,16 +380,14 @@ public class Antifroud extends GlobalScriptBase {
         String query = "INSERT INTO lockabonent (`id`, `fc`, `cid`) \n"
                 + " VALUES ('', ?, ?)";
         PreparedStatement ps = con.prepareStatement(query);
-        ps.setInt(1, WhatUser(contract));
+        ps.setInt(1, c.getPersonType());
         ps.setInt(2, contract);
         ps.executeUpdate();
-        
-        
+
         // изменение данных в таблице traffic
-        query="UPDATE traffic SET status=1 WHERE cid="+contract;
+        query = "UPDATE traffic SET status=4 WHERE cid=" + contract;
         ps = con.prepareStatement(query);
         ps.executeUpdate();
-        
 
         ps.close();
 

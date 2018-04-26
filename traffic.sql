@@ -37,7 +37,7 @@ CREATE TABLE `traffic` (
 -- Индексы таблицы `traffic`
 --
 ALTER TABLE `traffic`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `сid` (`сid`);
 
 --
