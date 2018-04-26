@@ -21,7 +21,7 @@ SET time_zone = "+00:00";
 DROP TABLE IF EXISTS `traffic`;
 CREATE TABLE `traffic` (
   `id` int(11) NOT NULL COMMENT 'код записи',
-  `contract_id` int(11) NOT NULL COMMENT 'код договора',
+  `cid` int(11) NOT NULL COMMENT 'код договора',
   `interzone` int(11) NOT NULL COMMENT 'время внутризонового времени разговора',
   `intercity` int(11) NOT NULL COMMENT 'время междугороднего разговора',
   `international` int(11) NOT NULL COMMENT 'время международного разговора',
@@ -38,6 +38,7 @@ CREATE TABLE `traffic` (
 --
 ALTER TABLE `traffic`
   ADD PRIMARY KEY (`id`);
+  ADD UNIQUE KEY `сid` (`сid`);
 
 --
 -- AUTO_INCREMENT для сохранённых таблиц

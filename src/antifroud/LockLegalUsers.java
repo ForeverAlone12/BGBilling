@@ -37,14 +37,14 @@ public class LockLegalUsers extends GlobalScriptBase {
         }
 
         try {
-            String query = "Select id, fc \n"
+            String query = "Select c.`id`, c.`fc` \n"
                     + "FROM contract c \n"
-                    + "LEFT JOIN contract_module cm on c.id = cm.cid \n"
-                    + "Where c.fc = 1 \n"
-                    + "AND c.sub_mode = 0 \n"
-                    + "AND cm.`mid` = 6 \n"
-                    + "AND c.`status` = 0 \n"
-                    + "AND c.id NOT IN (SELECT id FROM exception)\n";
+                    + "LEFT JOIN contract_module cm on c.`id`=cm.`cid` \n"
+                    + "Where c.`fc`=1 \n"
+                    + "AND c.`sub_mode`=0 \n"
+                    + "AND cm.`mid`=6 \n"
+                    + "AND c.`status`=0 \n"
+                    + "AND c.`id` NOT IN (SELECT id FROM exception)\n";
             PreparedStatement ps = con.prepareStatement(query);
             ResultSet rs = ps.executeQuery();
 
@@ -80,6 +80,7 @@ public class LockLegalUsers extends GlobalScriptBase {
 
             con.setAutoCommit(autocommit);
             rs.close();
+            ps.close();
             
         } catch (SQLException ex) {
             logger.error("Не удалось извлечь данные о юридических лицах\n");

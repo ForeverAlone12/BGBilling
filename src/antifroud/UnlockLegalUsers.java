@@ -35,9 +35,9 @@ public class UnlockLegalUsers extends GlobalScriptBase {
         }
 
         try {
-            String query = "Select id, fc, cid \n"
+            String query = "Select `id`, `fc`, `cid` \n"
                     + "FROM lockabonent \n"
-                    + "Where fc = 1";
+                    + "Where `fc`=1";
             PreparedStatement ps = con.prepareStatement(query);
             ResultSet rs = ps.executeQuery();
 
@@ -56,7 +56,7 @@ public class UnlockLegalUsers extends GlobalScriptBase {
                     c.setStatus((byte) 0);
                     cd.update(c);
 
-                    query = "DELETE FROM lockabonent  WHERE fc = " + rs.getInt("fc");
+                    query = "DELETE FROM lockabonent  WHERE `fc`=" + rs.getInt("fc");
                     ps = con.prepareStatement(query);
                     ps.executeUpdate();
 
@@ -68,6 +68,7 @@ public class UnlockLegalUsers extends GlobalScriptBase {
                 throw new BGException();
             } finally {
                 rs.close();
+                ps.close();
             }
 
         } catch (SQLException ex) {
