@@ -67,7 +67,7 @@ public class Antifraud extends GlobalScriptBase {
         int recordate = setting.getInt("recordate", 0);
 
         Calendar to = Calendar.getInstance();
-        Calendar from = Calendar.getInstance();
+        Calendar from = (Calendar) to.clone();
         if (recordate == 0) {
             // --- удалить на боевой версии
             to.set(Calendar.YEAR, 2017);
@@ -79,9 +79,8 @@ public class Antifraud extends GlobalScriptBase {
             to.set(Calendar.SECOND, 0);
             // --- конец удаления    
 
-            from = (Calendar) to.clone();
             from.add(Calendar.HOUR_OF_DAY, -1);
-        } else {        
+        } else {
             from.setTime(Timestamp.valueOf(setting.get("startdate")));
             to.setTime(Timestamp.valueOf(setting.get("enddate")));
         }
