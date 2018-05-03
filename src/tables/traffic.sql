@@ -26,7 +26,9 @@ CREATE TABLE `traffic` (
   `intercity` int(11) NOT NULL COMMENT 'время междугороднего разговора',
   `international` int(11) NOT NULL COMMENT 'время международного разговора',
   `day` date NOT NULL COMMENT 'дата разговора',
-  `status` tinyint(1) NOT NULL COMMENT 'статус (заблокирован/ не заблокирован)'
+  `status` tinyint(1) NOT NULL COMMENT 'статус (заблокирован/ не заблокирован)',
+  `time1` datetime NOT NULL COMMENT 'начало прошлой выборки',
+  `time2` datetime NOT NULL COMMENT 'конец прошлой выборки'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Данные о звоонках' COLLATE=utf8_unicode_ci;
 
 --
@@ -38,7 +40,7 @@ CREATE TABLE `traffic` (
 --
 ALTER TABLE `traffic`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `сid` (`сid`);
+  ADD UNIQUE KEY `code` (`сid`,`day`);
 
 --
 -- AUTO_INCREMENT для сохранённых таблиц

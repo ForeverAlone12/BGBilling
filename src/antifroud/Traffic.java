@@ -1,6 +1,7 @@
 package antifroud;
 
-import java.util.Date;
+import java.sql.Date;
+import java.sql.Time;
 
 /**
  * Информация о трафике абонента
@@ -19,23 +20,30 @@ public class Traffic {
      * @param international потраченные минуты по международным звонкам
      * @param day день звонка
      * @param status статус догвора
+     * @param date1 дата начала предыдущей выборки
+     * @param date2 дата конца предыдущей выборки
      */
-    Traffic(int id, int contract_id, int interzone, int intercity, int international, Date day, int status) {
+    Traffic(int id, int contract_id, int interzone, int intercity, int international, Date day, int status, Time time1, Time time2) {
         this.id = id;
-        this.contract_id = contract_id;
+        this.cid = contract_id;
         this.interzone = interzone;
         this.intercity = intercity;
         this.international = international;
         this.day = day;
         this.status = status;
+        this.from = time1;
+        this.to = time2;
     }
 
     /**
-     * 
+     *
      * @param contract_id номер контракта
      */
     public Traffic(int contract_id) {
-        this.contract_id = contract_id;
+        this.cid = contract_id;
+        this.intercity = 0;
+        this.international = 0;
+        this.interzone = 0;
     }
 
     /**
@@ -46,7 +54,7 @@ public class Traffic {
     /**
      * номер договора
      */
-    private int contract_id;
+    private int cid;
 
     /**
      * Количество потраченных минут по внутризоновым звонкам
@@ -75,12 +83,22 @@ public class Traffic {
     private int status;
 
     /**
+     * Дата начала прошлой выборки
+     */
+    private Time from;
+
+    /**
+     * Дата окончания прошлой выборки
+     */
+    private Time to;
+
+    /**
      * Получение номера контракта
      *
      * @return номер контракта
      */
     public int getContract_id() {
-        return contract_id;
+        return cid;
     }
 
     /**
@@ -112,6 +130,24 @@ public class Traffic {
 
     public int getStatus() {
         return status;
+    }
+
+    /**
+     * Получение даты начала предыдущей выборки
+     *
+     * @return дата начала предыдущей выборки
+     */
+    public Time getDateFrom() {
+        return from;
+    }
+
+    /**
+     * Получение даты конца предыдущей выборки
+     *
+     * @return дата конца предыдущей выборки
+     */
+    public Time getDateTo() {
+        return to;
     }
 
     public void setStatus(int status) {
