@@ -64,8 +64,8 @@ public class Antifraud extends GlobalScriptBase {
         limitSecondsNaturalIntercity = setting.getInt("LIMIT_SECONDS_NATURAL_INTERCITY", 12000);
         limitSecondsLegalIntercity = setting.getInt("LIMIT_SECONDS_LEGAL_INTERCITY", 60000);
         limitSecondsInternational = setting.getInt("LIMIT_SECONDS_INTERNATIONAL", 7200);
-        int recordate = setting.getInt("recordate", 0);
-
+        int recordate = setting.getInt("recordate",0);
+        
         Calendar to = Calendar.getInstance();
         Calendar from = (Calendar) to.clone();
         if (recordate == 0) {
@@ -277,7 +277,7 @@ public class Antifraud extends GlobalScriptBase {
                 + "FROM log_session_18_201708_fraud s \n"
                 + "WHERE s.`session_start` BETWEEN ? AND ? \n"
                 + "AND (s.`cid` NOT IN (SELECT t.`cid` FROM traffic t WHERE t.`status`=4)) \n" // убрать на рабочей машине
-                + "AND  \n"
+               // + "AND  \n"
                 + "LIMIT 10000) calls \n"
                 + "GROUP BY calls.`cid`, calls.`category`";
 
