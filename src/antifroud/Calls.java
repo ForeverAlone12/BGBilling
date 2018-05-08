@@ -15,14 +15,14 @@ public class Calls {
      * @param session_time продолжительность звонка
      */
     Calls(int contract_id, String categories, int session_time) {
-        this.contract_id = contract_id;
+        this.cid = contract_id;
         this.categories = categories;
         this.session_time = session_time;
     }
     /**
      * Номер договора
      */
-    private int contract_id;
+    private int cid;
     /**
      * Категории звонка
      */
@@ -39,7 +39,7 @@ public class Calls {
      * @return id контракта
      */
     public int getContarct_id() {
-        return contract_id;
+        return cid;
     }
 
     /**

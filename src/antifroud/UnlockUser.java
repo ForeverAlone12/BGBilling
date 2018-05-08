@@ -38,7 +38,7 @@ public class UnlockUser extends GlobalScriptBase {
         } catch (Exception ex) {
             logger.error("Не удалось подключиться к БД\n");
             logger.error(ex.getMessage(), ex);
-            throw new BGException();
+            throw new BGException("Ошибка подключения к БД в скрипте UnlockUser");
         }
 
         ContractDao cd;
@@ -71,16 +71,16 @@ public class UnlockUser extends GlobalScriptBase {
             } catch (SQLException ex) {
                 logger.error("Не удалось снять блокировку с абонента (cid = " + rs.getInt("cid") + ")\n");
                 logger.error(ex.getMessage(), ex);
-                throw new BGException();
+                throw new BGException("ошибка снятия блокировки");
             } finally {
                 rs.close();
                 ps.close();
             }
 
         } catch (SQLException ex) {
-            logger.error("Не удалось извлечь данные о юридических лицах\n");
+            logger.error("Не удалось извлечь данные о заблокированных лицах\n");
             logger.error(ex.getMessage(), ex);
-            throw new BGException();
+            throw new BGException("Ошибка извлечения данных о заблокировнных абонентов");
         }
 
     }

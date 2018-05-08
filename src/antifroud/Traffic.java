@@ -150,18 +150,41 @@ public class Traffic {
         return to;
     }
 
+    /**
+     * Установливает статуса договора
+     *
+     * 0 - подключен, 1 - на отключении, 2 - отключен, 3 - закрыт, 4 -
+     * приостановлен, 5 - на подключении
+     *
+     * @param status статус договора
+     */
     public void setStatus(int status) {
         this.status = status;
     }
 
+    /**
+     * Устанавливает время разговора по внутризоновой связи
+     *
+     * @param interzone время разговора по внутризоновой связи
+     */
     public void setInterzone(int interzone) {
         this.interzone = interzone;
     }
 
+    /**
+     * Устанавливает время разговора по междугородней связи
+     *
+     * @param intercity время разговора по междугородней связи
+     */
     public void setIntercity(int intercity) {
         this.intercity = intercity;
     }
 
+    /**
+     * Устанавливает время разговора по международной связи
+     *
+     * @param international время разговора по международной связи
+     */
     public void setInternational(int international) {
         this.international = international;
     }

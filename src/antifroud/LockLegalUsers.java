@@ -33,7 +33,7 @@ public class LockLegalUsers extends GlobalScriptBase {
         } catch (Exception ex) {
             logger.error("Не удалось подключиться к БД\n");
             logger.error(ex.getMessage(), ex);
-            throw new BGException();
+            throw new BGException("Ошибка подключения к БД в скрипте LockLegalUser");
         }
 
         try {
@@ -74,7 +74,7 @@ public class LockLegalUsers extends GlobalScriptBase {
                 } catch (SQLException ex) {
                     logger.error("Не удалось внести данные о заблокированных абонентов-юридических лиц\n");
                     logger.error(ex.getMessage(), ex);
-                    throw new BGException();
+                    throw new BGException("Ошибка блокировки юридических лиц");
                 }
             }
 
@@ -85,7 +85,7 @@ public class LockLegalUsers extends GlobalScriptBase {
         } catch (SQLException ex) {
             logger.error("Не удалось извлечь данные о юридических лицах\n");
             logger.error(ex.getMessage(), ex);
-            throw new BGException();
+            throw new BGException("Ошибка выборки юридического лица для блокировки");
         }
     }
 
