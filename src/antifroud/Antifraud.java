@@ -276,7 +276,7 @@ public class Antifraud extends GlobalScriptBase {
                 + ") category \n"
                 + "FROM log_session_18_201708_fraud s \n"
                 + "WHERE s.`session_start` BETWEEN ? AND ? \n"
-                + "AND (s.`cid` NOT IN (SELECT t.`cid` FROM traffic t WHERE t.`status`=4)) \n" // убрать на рабочей машине
+      //          + "AND (s.`cid` NOT IN (SELECT t.`cid` FROM traffic t WHERE t.`status`=4)) \n" // убрать на рабочей машине
                // + "AND  \n"
                 + "LIMIT 10000) calls \n"
                 + "GROUP BY calls.`cid`, calls.`category`";
@@ -366,8 +366,9 @@ public class Antifraud extends GlobalScriptBase {
         c.setStatus((byte) 4);
         cd.update(c);
 
+        
         // занесение в таблицу lockabonent заблокированных абонентов
-        String query = "INSERT INTO lockabonent (`id`, `fc`, `cid`) \n"
+        String query = "INSERT IGNORE INTO lockabonent (`id`, `fc`, `cid`) \n"
                 + " VALUES ('', ?, ?)";
         PreparedStatement ps = con.prepareStatement(query);
         ps.setInt(1, c.getPersonType());

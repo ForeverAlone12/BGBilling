@@ -43,7 +43,7 @@ CREATE TABLE `lockabonent` (
 --
 ALTER TABLE `lockabonent`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `id` (`id`);
+  ADD UNIQUE KEY `cid` (`cid`);
 
 --
 -- AUTO_INCREMENT для сохранённых таблиц
