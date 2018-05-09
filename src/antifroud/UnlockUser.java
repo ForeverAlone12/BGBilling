@@ -36,16 +36,15 @@ public class UnlockUser extends GlobalScriptBase {
         try {
             con = connectionSet.getConnection();
         } catch (Exception ex) {
-            logger.error("Не удалось подключиться к БД\n");
-            logger.error(ex.getMessage(), ex);
-            throw new BGException("Ошибка подключения к БД в скрипте UnlockUser");
+            //logger.error("Не удалось подключиться к БД\n");
+            //logger.error(ex.getMessage(), ex);
+            throw new BGException("Ошибка подключения к БД в скрипте UnlockUser\n" + ex.getMessage() + "\n" + ex);
         }
 
-        ContractDao cd;
-        Contract c;
+        ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
+        Contract c = null;
 
         con = connectionSet.getConnection();
-        boolean autocommit = con.getAutoCommit();
         con.setAutoCommit(false);
 
         try {
@@ -56,7 +55,6 @@ public class UnlockUser extends GlobalScriptBase {
             ResultSet rs = ps.executeQuery();
             try {
                 while (rs.next()) {
-                    cd = new ContractDao(connectionSet.getConnection(), 0);
                     c = cd.get(rs.getInt("cid"));
                     c.setStatus((byte) 0);
                     cd.update(c);
@@ -66,21 +64,21 @@ public class UnlockUser extends GlobalScriptBase {
                     ps.executeUpdate();
                 }
 
-                con.setAutoCommit(autocommit);
+                con.commit();
 
             } catch (SQLException ex) {
-                logger.error("Не удалось снять блокировку с абонента (cid = " + rs.getInt("cid") + ")\n");
-                logger.error(ex.getMessage(), ex);
-                throw new BGException("ошибка снятия блокировки");
+                //logger.error("Не удалось снять блокировку с абонента  = " + rs.getInt("cid") + "\n");
+                //logger.error(ex.getMessage(), ex);
+                throw new BGException("Не удалось снять блокировку с абонента  = " + rs.getInt("cid") + "\n" + ex.getMessage() + "\n" + ex);
             } finally {
                 rs.close();
                 ps.close();
             }
 
         } catch (SQLException ex) {
-            logger.error("Не удалось извлечь данные о заблокированных лицах\n");
-            logger.error(ex.getMessage(), ex);
-            throw new BGException("Ошибка извлечения данных о заблокировнных абонентов");
+            //logger.error("Не удалось извлечь данные о заблокированных лицах\n");
+            //logger.error(ex.getMessage(), ex);
+            throw new BGException("Ошибка извлечения данных о заблокировнных абонентов\n" + ex.getMessage() + "\n" + ex);
         }
 
     }

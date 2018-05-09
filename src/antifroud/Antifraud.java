@@ -17,6 +17,7 @@ import ru.bitel.bgbilling.common.BGException;
 import ru.bitel.bgbilling.kernel.contract.api.common.bean.Contract;
 import ru.bitel.bgbilling.kernel.script.server.dev.GlobalScriptBase;
 import ru.bitel.bgbilling.kernel.contract.api.server.bean.ContractDao;
+import ru.bitel.bgbilling.server.util.ServerUtils;
 
 public class Antifraud extends GlobalScriptBase {
 
@@ -48,6 +49,11 @@ public class Antifraud extends GlobalScriptBase {
      */
     private int limitSecondsInternational;
 
+    int codeTelephoneNumb;
+
+    /**
+     * количество заблокированных абонентов
+     */
     private int lok = 0;
 
     @Override
@@ -64,8 +70,10 @@ public class Antifraud extends GlobalScriptBase {
         limitSecondsNaturalIntercity = setting.getInt("LIMIT_SECONDS_NATURAL_INTERCITY", 12000);
         limitSecondsLegalIntercity = setting.getInt("LIMIT_SECONDS_LEGAL_INTERCITY", 60000);
         limitSecondsInternational = setting.getInt("LIMIT_SECONDS_INTERNATIONAL", 7200);
-        int recordate = setting.getInt("recordate",0);
-        
+        codeTelephoneNumb = setting.getInt("codeTElephone", 6);
+
+        int recordate = setting.getInt("recordate", 0);
+
         Calendar to = Calendar.getInstance();
         Calendar from = (Calendar) to.clone();
         if (recordate == 0) {
@@ -91,9 +99,9 @@ public class Antifraud extends GlobalScriptBase {
         try {
             con = connectionSet.getConnection();
         } catch (Exception ex) {
-            logger.error("Не удалось подключиться к БД\n");
-            logger.error(ex.getMessage(), ex);
-            throw new BGException("Ошибка подключения к БД в скрипте Antifroud");
+            //logger.error("Ошибка подключения к БД в скрипте Antifroud");
+            //logger.error(ex.getMessage(), ex);
+            throw new BGException("Ошибка подключения к БД в скрипте Antifroud\n" + ex.getMessage() + "\n" + ex);
         }
 
         // считывание данных об обработанных звонках за день
@@ -101,11 +109,10 @@ public class Antifraud extends GlobalScriptBase {
         try {
             traffic = getTraffic(from, to);
         } catch (SQLException ex) {
-            logger.error("Не удалось извлечь данные об обработанных звонках за день.\n"
-                    + "Время начала извлечения " + from.toString());
-            logger.error(ex.getMessage(), ex);
+            // logger.error("Не удалось извлечь данные об обработанных звонках за день. Время начала извлечения " + from.toString() + "\n");
+            // logger.error(ex.getMessage(), ex);
             throw new BGException("Не удалось извлечь данные об обработанных звонках за день.\n"
-                    + "Время начала извлечения " + from.toString());
+                    + "Время начала извлечения " + from.toString() + "\n" + ex.getMessage() + "\n" + ex);
         }
 
         // Считывание необработанных звонков
@@ -113,11 +120,10 @@ public class Antifraud extends GlobalScriptBase {
         try {
             calls = getCalls(from, to);
         } catch (SQLException e) {
-            logger.error("Не удалось извлечь данные о звонках с "
-                    + from.toString() + " по " + to.toString() + "\n");
-            logger.error(e.getMessage(), e);
+            //logger.error("Не удалось извлечь данные о звонках с " + from.toString() + " по " + to.toString() + "\n");
+            //logger.error(e.getMessage(), e);
             throw new BGException("Не удалось извлечь данные о звонках с "
-                    + from.toString() + " по " + to.toString() + "\n");
+                    + from.toString() + " по " + to.toString() + "\n" + e.getMessage() + "\n" + e);
         }
 
         print("Количество необработанных звонков = " + calls.size());
@@ -126,15 +132,15 @@ public class Antifraud extends GlobalScriptBase {
         Calls call; // данные звонка абонента
         Traffic tr; // текущий трафик абонента
         ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
-        Contract contract;
+        Contract contract = null;
         // информация о пользователях, которых нельзя блокировать
         ArrayList<Users> users = new ArrayList<>();
         try {
             users = getUsers();
         } catch (SQLException ex) {
-            logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
-            logger.error(ex.getMessage(), ex);
-            throw new BGException("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
+            // logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
+            // logger.error(ex.getMessage(), ex);
+            throw new BGException("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n" + ex.getMessage() + "\n" + ex);
         }
 
         // определение превышения трафика
@@ -144,12 +150,13 @@ public class Antifraud extends GlobalScriptBase {
             // информация о необработанном звонке
             call = calls.get(i);
 
-            contract = cd.get(call.getContarct_id());
-            if (contract == null) {
-                print("NULL CONTRACT " + call.getContarct_id());
+            try {
+                contract = cd.get(call.getContarct_id());
+            } catch (NullPointerException e) {
+                // logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id());
+                // logger.error(e.getMessage(), e);
+                throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
             }
-            print(contract.getId());
-
             // получение данных о трафике абонента
             tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id()));
 
@@ -168,9 +175,9 @@ public class Antifraud extends GlobalScriptBase {
                         throw new Exception("Неопознанный тип звонка");
                 }
             } catch (Exception ex) {
-                logger.error("Не удалось распознать тип звонка. Полученный тип : " + call.getCategories() + "\n");
-                logger.error(ex.getMessage(), ex);
-                throw new BGException("Не удалось распознать тип звонка. Полученный тип: " + call.getCategories() + "\n");
+                //  logger.error("Не удалось распознать тип звонка. Полученный тип : " + call.getCategories() + "\n");
+                //  logger.error(ex.getMessage(), ex);
+                throw new BGException("Не удалось распознать тип звонка. Полученный тип: " + call.getCategories() + "\n" + ex.getMessage() + "\n" + ex);
             }
 
             // проверка на превышение трафик производится только для абонентов,
@@ -195,14 +202,10 @@ public class Antifraud extends GlobalScriptBase {
                         default:
                             throw new Exception("Неопознанный тип договора");
                     }
-                } catch (NullPointerException e) {
-                    logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id());
-                    logger.error(e.getMessage(), e);
-                    throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id());
                 } catch (Exception ex) {
-                    logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договра: " + contract.getPersonType());
-                    logger.error(ex.getMessage(), ex);
-                    throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договора: " + contract.getPersonType());
+                    //logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договра: " + contract.getPersonType());
+                    //logger.error(ex.getMessage(), ex);
+                    throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договора: " + contract.getPersonType() + "\n" + ex.getMessage() + "\n" + ex);
                 }
                 try {
                     AddDataInTraffic(tr, from, to);
@@ -210,11 +213,10 @@ public class Antifraud extends GlobalScriptBase {
                     if (!traffic.containsKey(call.getContarct_id())) {
                         traffic.put(tr.getContract_id(), tr);
                     }
-
                 } catch (SQLException ex) {
-                    logger.error("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
-                    logger.error(ex.getMessage(), ex);
-                    throw new BGException("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
+                    //logger.error("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
+                    //logger.error(ex.getMessage(), ex);
+                    throw new BGException("Ошибка вставки данных о звонках абонента: " + call.getContarct_id() + "\n" + ex.getMessage() + "\n" + ex);
                 }
             }// if (users.contain...)
         }// for
@@ -274,17 +276,15 @@ public class Antifraud extends GlobalScriptBase {
                 + "IF (SUBSTR(s.`to_number_164`, 2, 3)=SUBSTR(s.`from_number_164`, 2, 3) \n"
                 + "OR is_irk_mobile(s.`to_number_164`),'3','2') \n"
                 + ") category \n"
-                + "FROM log_session_18_201708_fraud s \n"
+                + "FROM ? s \n"
                 + "WHERE s.`session_start` BETWEEN ? AND ? \n"
-      //          + "AND (s.`cid` NOT IN (SELECT t.`cid` FROM traffic t WHERE t.`status`=4)) \n" // убрать на рабочей машине
-               // + "AND  \n"
                 + "LIMIT 10000) calls \n"
                 + "GROUP BY calls.`cid`, calls.`category`";
 
         try (PreparedStatement ps = con.prepareStatement(query)) {
-            //ps.setString(1, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), 6));
-            ps.setTimestamp(1, TimeUtils.convertCalendarToTimestamp(from));
-            ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(to));
+            ps.setString(1, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), codeTelephoneNumb));
+            ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(from));
+            ps.setTimestamp(3, TimeUtils.convertCalendarToTimestamp(to));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     calls.add(new Calls(rs.getInt("cid"), rs.getString("category"), rs.getInt("time")));
@@ -356,7 +356,6 @@ public class Antifraud extends GlobalScriptBase {
     private void LockContract(int contract) throws Exception {
 
         con = conSet.getConnection();
-        boolean autocommit = con.getAutoCommit();
         con.setAutoCommit(false);
 
         // изменение статуса контракта в системе BGBilling
@@ -366,7 +365,6 @@ public class Antifraud extends GlobalScriptBase {
         c.setStatus((byte) 4);
         cd.update(c);
 
-        
         // занесение в таблицу lockabonent заблокированных абонентов
         String query = "INSERT IGNORE INTO lockabonent (`id`, `fc`, `cid`) \n"
                 + " VALUES ('', ?, ?)";
@@ -382,9 +380,9 @@ public class Antifraud extends GlobalScriptBase {
 
         ps.close();
 
-        con.setAutoCommit(autocommit);
+        con.commit();
 
-        print("!!!!!!!!!! контракт " + contract + " заблокирован!!!");
+        print("Контракт " + contract + " заблокирован!!!");
         lok++;
 
     }

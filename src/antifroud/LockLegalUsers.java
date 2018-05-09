@@ -31,9 +31,9 @@ public class LockLegalUsers extends GlobalScriptBase {
         try {
             con = connectionSet.getConnection();
         } catch (Exception ex) {
-            logger.error("Не удалось подключиться к БД\n");
-            logger.error(ex.getMessage(), ex);
-            throw new BGException("Ошибка подключения к БД в скрипте LockLegalUser");
+            //logger.error("Не удалось подключиться к БД\n");
+            //logger.error(ex.getMessage(), ex);
+            throw new BGException("Ошибка подключения к БД в скрипте LockLegalUser\n" + ex.getMessage() + "\n" + ex);
         }
 
         try {
@@ -44,20 +44,18 @@ public class LockLegalUsers extends GlobalScriptBase {
                     + "AND c.`sub_mode`=0 \n"
                     + "AND cm.`mid`=6 \n"
                     + "AND c.`status`=0 \n"
-                    + "AND c.`id` NOT IN (SELECT id FROM exception)\n";
+                    + "AND c.`id` NOT IN (SELECT `id` FROM exception)\n";
             PreparedStatement ps = con.prepareStatement(query);
             ResultSet rs = ps.executeQuery();
 
-            ContractDao cd;
-            Contract c;
+            ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
+            Contract c = null;
 
             con = connectionSet.getConnection();
-            boolean autocommit = con.getAutoCommit();
             con.setAutoCommit(false);
 
             while (rs.next()) {
                 // блокировка юридических лиц
-                cd = new ContractDao(connectionSet.getConnection(), 0);
                 c = cd.get(rs.getInt("id"));
                 c.setStatus((byte) 4);
                 cd.update(c);
@@ -70,22 +68,22 @@ public class LockLegalUsers extends GlobalScriptBase {
                     ps.setInt(1, 1);
                     ps.setInt(2, rs.getInt("id"));
                     ps.executeUpdate();
-                    
+
                 } catch (SQLException ex) {
-                    logger.error("Не удалось внести данные о заблокированных абонентов-юридических лиц\n");
-                    logger.error(ex.getMessage(), ex);
-                    throw new BGException("Ошибка блокировки юридических лиц");
+                    //logger.error("Не удалось внести данные о заблокированных абонентах\n");
+                    //logger.error(ex.getMessage(), ex);
+                    throw new BGException("Не удалось внести данные о заблокированных абонентах\n" + ex.getMessage() + "\n" + ex);
                 }
             }
 
-            con.setAutoCommit(autocommit);
+            con.commit();
             rs.close();
             ps.close();
-            
+
         } catch (SQLException ex) {
-            logger.error("Не удалось извлечь данные о юридических лицах\n");
-            logger.error(ex.getMessage(), ex);
-            throw new BGException("Ошибка выборки юридического лица для блокировки");
+            //logger.error("Не удалось извлечь данные о юридических лицах\n");
+            //logger.error(ex.getMessage(), ex);
+            throw new BGException("Ошибка выборки юридического лица для блокировки\n" + ex.getMessage() + "\n" + ex);
         }
     }
 

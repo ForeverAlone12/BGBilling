@@ -29,9 +29,9 @@ public class UnlockLegalUsers extends GlobalScriptBase {
         try {
             con = connectionSet.getConnection();
         } catch (Exception ex) {
-            logger.error("Не удалось подключиться к БД\n");
-            logger.error(ex.getMessage(), ex);
-            throw new BGException("Ошибка подключения к БД в скрипте UnlockLegalUser");
+            //logger.error("Не удалось подключиться к БД\n");
+            //logger.error(ex.getMessage(), ex);
+            throw new BGException("Ошибка подключения к БД в скрипте UnlockLegalUser\n" + ex.getMessage() + "\n" + ex);
         }
 
         try {
@@ -41,17 +41,15 @@ public class UnlockLegalUsers extends GlobalScriptBase {
             PreparedStatement ps = con.prepareStatement(query);
             ResultSet rs = ps.executeQuery();
 
-            ContractDao cd;
-            Contract c;
+            ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
+            Contract c = null;
 
             con = connectionSet.getConnection();
-            boolean autocommit = con.getAutoCommit();
             con.setAutoCommit(false);
 
             try {
                 while (rs.next()) {
                     // снятие блокировки с абонентов-юридических лиц
-                    cd = new ContractDao(connectionSet.getConnection(), 0);
                     c = cd.get(rs.getInt("cid"));
                     c.setStatus((byte) 0);
                     cd.update(c);
@@ -61,20 +59,20 @@ public class UnlockLegalUsers extends GlobalScriptBase {
                     ps.executeUpdate();
 
                 }
-                con.setAutoCommit(autocommit);
+                con.commit();
             } catch (SQLException ex) {
-                logger.error("Не удалось снять блокировку с абонента (cid = " + rs.getInt("cid") + ")\n");
-                logger.error(ex.getMessage(), ex);
-                throw new BGException("Ошибка снятия блокировки с юридических лиц");
+                //logger.error("Не удалось снять блокировку с абонента: " + rs.getInt("cid") + "\n");
+                //logger.error(ex.getMessage(), ex);
+                throw new BGException("Не удалось снять блокировку с абонента: " + rs.getInt("cid") + "\n" + ex.getMessage() + "\n" + ex);
             } finally {
                 rs.close();
                 ps.close();
             }
 
         } catch (SQLException ex) {
-            logger.error("Не удалось извлечь данные о юридических лицах\n");
-            logger.error(ex.getMessage(), ex);
-            throw new BGException("Ошибка выборки юридического лица для снятия блокировки");
+            //logger.error("Не удалось извлечь данные о юридических лицах\n");
+            //logger.error(ex.getMessage(), ex);
+            throw new BGException("Ошибка выборки юридического лица для снятия блокировки\n" + ex.getMessage() + "\n" + ex);
         }
 
     }
