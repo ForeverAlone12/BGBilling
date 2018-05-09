@@ -64,13 +64,13 @@ public class Antifraud extends GlobalScriptBase {
 
         conSet = connectionSet;
 
-        ParameterMap setting = setup.sub("ru.dsi.fraud");
+        ParameterMap setting = setup.sub("ru.dsi.fraud.");
         limitSecondsNaturalZone = setting.getInt("LIMIT_SECONDS_NATURAL_ZONE", 12000);
         limitSecondsLegalZone = setting.getInt("LIMIT_SECONDS_LEGAL_ZONE", 60000);
         limitSecondsNaturalIntercity = setting.getInt("LIMIT_SECONDS_NATURAL_INTERCITY", 12000);
         limitSecondsLegalIntercity = setting.getInt("LIMIT_SECONDS_LEGAL_INTERCITY", 60000);
         limitSecondsInternational = setting.getInt("LIMIT_SECONDS_INTERNATIONAL", 7200);
-        codeTelephoneNumb = setting.getInt("codeTElephone", 6);
+        codeTelephoneNumb = setting.getInt("codeTelephone", 6);
 
         int recordate = setting.getInt("recordate", 0);
 
