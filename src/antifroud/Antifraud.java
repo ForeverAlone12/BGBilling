@@ -1,5 +1,6 @@
 package antifroud;
 
+//package ru.dsi.fraud;
 import java.util.HashMap;
 import java.sql.ResultSet;
 import java.util.Calendar;
@@ -187,29 +188,32 @@ public class Antifraud extends GlobalScriptBase {
             // не входящих в список исключений
             if (!users.contains(call.getContarct_id())) {
 
-                print("Тип договора: " + contract.getPersonType());
-                try {
-                    switch (contract.getPersonType()) {
-                        case 0:
-                            if (InZoneNatural(tr.getInterzone()) || IntercityNatural(tr.getIntercity()) || International(tr.getInternational())) {
-                                LockContract(call.getContarct_id());
-                                tr.setStatus(0);
-                            }
-                            break;
-                        case 1:
-                            if (InZoneLegal(tr.getInterzone()) || IntercityLegal(tr.getIntercity()) || International(tr.getInternational())) {
-                                LockContract(call.getContarct_id());
-                                tr.setStatus(0);
-                            }
-                            break;
-                        default:
-                            throw new Exception("Неопознанный тип договора");
+                if (tr.getStatus() != 4) {
+                    print("Тип договора: " + contract.getPersonType());
+                    try {
+                        switch (contract.getPersonType()) {
+                            case 0:
+                                if (InZoneNatural(tr.getInterzone()) || IntercityNatural(tr.getIntercity()) || International(tr.getInternational())) {
+                                    LockContract(call.getContarct_id());
+                                    tr.setStatus(0);
+                                }
+                                break;
+                            case 1:
+                                if (InZoneLegal(tr.getInterzone()) || IntercityLegal(tr.getIntercity()) || International(tr.getInternational())) {
+                                    LockContract(call.getContarct_id());
+                                    tr.setStatus(0);
+                                }
+                                break;
+                            default:
+                                throw new Exception("Неопознанный тип договора");
+                        }
+                    } catch (Exception ex) {
+                        // logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договра: " + contract.getPersonType());
+                        // logger.error(ex.getMessage(), ex);
+                        throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договора: " + contract.getPersonType() + "\n" + ex.getMessage() + "\n" + ex);
                     }
-                } catch (Exception ex) {
-                    //logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договра: " + contract.getPersonType());
-                    //logger.error(ex.getMessage(), ex);
-                    throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договора: " + contract.getPersonType() + "\n" + ex.getMessage() + "\n" + ex);
-                }
+                }             
+                
                 try {
                     AddDataInTraffic(tr, from, to);
                     // если нет данных о звонках
@@ -222,6 +226,7 @@ public class Antifraud extends GlobalScriptBase {
                     throw new BGException("Ошибка вставки данных о звонках абонента: " + call.getContarct_id() + "\n" + ex.getMessage() + "\n" + ex);
                 }
             }// if (users.contain...)
+
         }// for
 
         print("Количество данных трафика после обработки данных = " + traffic.size());
@@ -279,15 +284,15 @@ public class Antifraud extends GlobalScriptBase {
                 + "IF (SUBSTR(s.`to_number_164`, 2, 3)=SUBSTR(s.`from_number_164`, 2, 3) \n"
                 + "OR is_irk_mobile(s.`to_number_164`),'3','2') \n"
                 + ") category \n"
-                + "FROM ? s \n"
+                + "FROM " + ServerUtils.getModuleMonthTableName("log_session", from.getTime(), codeTelephoneNumb) + " s \n"
                 + "WHERE s.`session_start` BETWEEN ? AND ? \n"
-                + "LIMIT 10000) calls \n"
+                + ") calls \n"
                 + "GROUP BY calls.`cid`, calls.`category`";
 
         try (PreparedStatement ps = con.prepareStatement(query)) {
-            ps.setString(1, ServerUtils.getModuleMonthTableName(" log_session_", from.getTime(), codeTelephoneNumb));
-            ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(from));
-            ps.setTimestamp(3, TimeUtils.convertCalendarToTimestamp(to));
+            ps.setTimestamp(1, TimeUtils.convertCalendarToTimestamp(from));
+            ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(to));
+
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     calls.add(new Calls(rs.getInt("cid"), rs.getString("category"), rs.getInt("time")));
@@ -322,10 +327,11 @@ public class Antifraud extends GlobalScriptBase {
 
     /**
      * Добавление информации о трафике абонента
+     *
      * @param tr данные трафика
      * @param from начало выборки
      * @param toконец выборки
-     * @throws SQLException 
+     * @throws SQLException
      */
     private void AddDataInTraffic(Traffic tr, Calendar from, Calendar to) throws SQLException {
         String query = "INSERT INTO traffic (`id`,`cid`, `interzone`, `intercity`, `international`, `day`, `status`,`time1`,`time2`)\n"
