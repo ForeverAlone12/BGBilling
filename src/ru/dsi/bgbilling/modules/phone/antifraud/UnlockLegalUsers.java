@@ -1,4 +1,4 @@
-package antifroud;
+package ru.dsi.bgbilling.modules.phone.antifraud;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
