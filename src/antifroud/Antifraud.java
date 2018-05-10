@@ -49,7 +49,10 @@ public class Antifraud extends GlobalScriptBase {
      */
     private int limitSecondsInternational;
 
-    int codeTelephoneNumb;
+    /**
+     * Код модуля телефонии
+     */
+    private int codeTelephoneNumb;
 
     /**
      * количество заблокированных абонентов
@@ -131,7 +134,7 @@ public class Antifraud extends GlobalScriptBase {
 
         Calls call; // данные звонка абонента
         Traffic tr; // текущий трафик абонента
-        ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
+        ContractDao cd = new ContractDao(con, 0);
         Contract contract = null;
         // информация о пользователях, которых нельзя блокировать
         ArrayList<Users> users = new ArrayList<>();
@@ -319,10 +322,10 @@ public class Antifraud extends GlobalScriptBase {
 
     /**
      * Добавление информации о трафике абонента
-     *
      * @param tr данные трафика
-     * @param date дата добавления
-     * @throws SQLException
+     * @param from начало выборки
+     * @param toконец выборки
+     * @throws SQLException 
      */
     private void AddDataInTraffic(Traffic tr, Calendar from, Calendar to) throws SQLException {
         String query = "INSERT INTO traffic (`id`,`cid`, `interzone`, `intercity`, `international`, `day`, `status`,`time1`,`time2`)\n"
@@ -355,11 +358,10 @@ public class Antifraud extends GlobalScriptBase {
      */
     private void LockContract(int contract) throws Exception {
 
-        con = conSet.getConnection();
         con.setAutoCommit(false);
 
         // изменение статуса контракта в системе BGBilling
-        ContractDao cd = new ContractDao(conSet.getConnection(), 0);
+        ContractDao cd = new ContractDao(con, 0);
         Contract c = cd.get(contract);
 
         c.setStatus((byte) 4);

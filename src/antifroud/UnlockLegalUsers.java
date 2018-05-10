@@ -41,10 +41,9 @@ public class UnlockLegalUsers extends GlobalScriptBase {
             PreparedStatement ps = con.prepareStatement(query);
             ResultSet rs = ps.executeQuery();
 
-            ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
+            ContractDao cd = new ContractDao(con, 0);
             Contract c = null;
-
-            con = connectionSet.getConnection();
+            
             con.setAutoCommit(false);
 
             try {

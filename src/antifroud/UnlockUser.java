@@ -41,10 +41,9 @@ public class UnlockUser extends GlobalScriptBase {
             throw new BGException("Ошибка подключения к БД в скрипте UnlockUser\n" + ex.getMessage() + "\n" + ex);
         }
 
-        ContractDao cd = new ContractDao(connectionSet.getConnection(), 0);
+        ContractDao cd = new ContractDao(con, 0);
         Contract c = null;
 
-        con = connectionSet.getConnection();
         con.setAutoCommit(false);
 
         try {
