@@ -170,19 +170,28 @@ public class Antifraud extends GlobalScriptBase {
             print("Статус договора = " + tr.getStatus());
 
             try {     // вычисление длительности разговора
-                switch (call.getCategories()) {
-                    case "1":
-                        tr.setInternational(tr.getInternational() + calls.get(i).getTime());
-                        break;
-                    case "2":
-                        tr.setIntercity(tr.getIntercity() + calls.get(i).getTime());
-                        break;
-                    case "3":
-                        tr.setInterzone(tr.getInterzone() + calls.get(i).getTime());
-                        break;
-                    default:
-                        throw new Exception("Неопознанный тип звонка");
+                
+                // если какая-нибудь из текущих границ выборки попадают в промежуток предыдущей
+                if (isExists(tr, from, to)) {                    
+                    tr.setInternational(0);
+                    tr.setIntercity(0);
+                    tr.setInterzone(0);
                 }
+                    
+                    switch (call.getCategories()) {
+                        case "1":
+                            tr.setInternational(tr.getInternational() + calls.get(i).getTime());
+                            break;
+                        case "2":
+                            tr.setIntercity(tr.getIntercity() + calls.get(i).getTime());
+                            break;
+                        case "3":
+                            tr.setInterzone(tr.getInterzone() + calls.get(i).getTime());
+                            break;
+                        default:
+                            throw new Exception("Неопознанный тип звонка");
+                    }
+                
             } catch (Exception ex) {
                 //  logger.error("Не удалось распознать тип звонка. Полученный тип : " + call.getCategories() + "\n");
                 //  logger.error(ex.getMessage(), ex);
@@ -222,12 +231,9 @@ public class Antifraud extends GlobalScriptBase {
                 }
 
                 try {
-                    // если границы текущей выборки попадают (но не принадлежат) в границы прошлой
-                    if (ToTimestamp(from).after(tr.getDateFrom()) && ToTimestamp(from).before(tr.getDateTo()) || ToTimestamp(to).before(tr.getDateTo()) && ToTimestamp(to).after(tr.getDateFrom())) {
-                        // данные обновляются
+                    if (isExists(tr, from, to)) {
                         UpdateDataInTraffic(tr, from, to);
                     } else {
-                        // данные добовляются
                         AddDataInTraffic(tr, from, to);
                     }
 
@@ -248,6 +254,11 @@ public class Antifraud extends GlobalScriptBase {
         print("Количество заблокированных абонентов " + lok);
     }
 
+    /**
+     *
+     * @param calendar
+     * @return
+     */
     private Timestamp ToTimestamp(Calendar calendar) {
         return TimeUtils.convertCalendarToTimestamp(calendar);
     }
@@ -283,6 +294,17 @@ public class Antifraud extends GlobalScriptBase {
 
             return traffic;
         }
+    }
+
+    /**
+     * Осуществлялась выборка данных с from по to
+     * @param tr данные трафика
+     * @param from начало выборки
+     * @param to конец выборки 
+     * @return trrue - диапозон выборки принадлежит диапозону прошлой выборки, иначе - false
+     */
+    private boolean isExists(Traffic tr, Calendar from, Calendar to) {
+        return (ToTimestamp(from).after(tr.getDateFrom()) && ToTimestamp(from).before(tr.getDateTo())) || (ToTimestamp(to).before(tr.getDateTo()) && ToTimestamp(to).after(tr.getDateFrom()) || (ToTimestamp(from).equals(tr.getDateFrom()) && ToTimestamp(to).equals(tr.getDateTo())));
     }
 
     /**
