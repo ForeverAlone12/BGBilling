@@ -40,7 +40,7 @@ CREATE TABLE `traffic` (
 --
 ALTER TABLE `traffic`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `code` (`сid`,`day`);
+  ADD UNIQUE KEY `code` (`cid`,`day`);
 
 --
 -- AUTO_INCREMENT для сохранённых таблиц

@@ -1,4 +1,4 @@
-package antifroud;
+package ru.dsi.bgbilling.modules.phone.antifraud;
 
 //package ru.dsi.fraud;
 import java.util.HashMap;
@@ -58,14 +58,13 @@ public class Antifraud extends GlobalScriptBase {
     /**
      * количество заблокированных абонентов
      */
-    private int lok = 0;
+    private int lok;
 
     @Override
     public void execute(Setup setup, ConnectionSet connectionSet) throws Exception {
 
         // обработчик ошибок
-        Logger logger = Logger.getLogger(this.getClass());
-
+        //Logger logger = Logger.getLogger(this.getClass());
         conSet = connectionSet;
 
         ParameterMap setting = setup.sub("ru.dsi.fraud.");
@@ -80,17 +79,19 @@ public class Antifraud extends GlobalScriptBase {
 
         Calendar to = Calendar.getInstance();
         Calendar from = (Calendar) to.clone();
+
         if (recordate == 0) {
             // --- удалить на боевой версии
             to.set(Calendar.YEAR, 2017);
             //месяцы в Calendar нумеруются с 0. Так исторически сложилось :)
             to.set(Calendar.MONTH, 7);
             to.set(Calendar.DAY_OF_MONTH, 1);
-            to.set(Calendar.HOUR_OF_DAY, 0);
+            to.set(Calendar.HOUR_OF_DAY, 2);
             to.set(Calendar.MINUTE, 0);
             to.set(Calendar.SECOND, 0);
             // --- конец удаления    
 
+            from = (Calendar) to.clone();
             from.add(Calendar.HOUR_OF_DAY, -1);
         } else {
             from.setTime(Timestamp.valueOf(setting.get("startdate")));
@@ -147,6 +148,7 @@ public class Antifraud extends GlobalScriptBase {
             throw new BGException("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n" + ex.getMessage() + "\n" + ex);
         }
 
+        lok = 0;
         // определение превышения трафика
         for (int i = 0; i < calls.size(); i++) {
             print("№ необработанного звонка: " + (i + 1));
@@ -156,6 +158,8 @@ public class Antifraud extends GlobalScriptBase {
 
             try {
                 contract = cd.get(call.getContarct_id());
+                print("Номер договора = " + contract);
+
             } catch (NullPointerException e) {
                 // logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id());
                 // logger.error(e.getMessage(), e);
@@ -163,6 +167,7 @@ public class Antifraud extends GlobalScriptBase {
             }
             // получение данных о трафике абонента
             tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id()));
+            print("Статус договора = " + tr.getStatus());
 
             try {     // вычисление длительности разговора
                 switch (call.getCategories()) {
@@ -188,20 +193,22 @@ public class Antifraud extends GlobalScriptBase {
             // не входящих в список исключений
             if (!users.contains(call.getContarct_id())) {
 
-                if (tr.getStatus() != 4) {
+                if (tr.getStatus() != 4) { // если абонент заблокирован,то не надо блокировать его снова
                     print("Тип договора: " + contract.getPersonType());
                     try {
                         switch (contract.getPersonType()) {
                             case 0:
                                 if (InZoneNatural(tr.getInterzone()) || IntercityNatural(tr.getIntercity()) || International(tr.getInternational())) {
                                     LockContract(call.getContarct_id());
-                                    tr.setStatus(0);
+                                    tr.setStatus(4);
+                                    print("У контракта " + contract + " сменился статус на " + tr.getStatus());
                                 }
                                 break;
                             case 1:
                                 if (InZoneLegal(tr.getInterzone()) || IntercityLegal(tr.getIntercity()) || International(tr.getInternational())) {
                                     LockContract(call.getContarct_id());
-                                    tr.setStatus(0);
+                                    tr.setStatus(4);
+                                    print("У контракта " + contract + " сменился статус на " + tr.getStatus());
                                 }
                                 break;
                             default:
@@ -212,10 +219,18 @@ public class Antifraud extends GlobalScriptBase {
                         // logger.error(ex.getMessage(), ex);
                         throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договора: " + contract.getPersonType() + "\n" + ex.getMessage() + "\n" + ex);
                     }
-                }             
-                
+                }
+
                 try {
-                    AddDataInTraffic(tr, from, to);
+                    // если границы текущей выборки попадают (но не принадлежат) в границы прошлой
+                    if (ToTimestamp(from).after(tr.getDateFrom()) || ToTimestamp(to).before(tr.getDateTo())) {
+                        // данные обновляются
+                        UpdateDataInTraffic(tr, from, to);
+                    } else {
+                        // данные добовляются
+                        AddDataInTraffic(tr, from, to);
+                    }
+
                     // если нет данных о звонках
                     if (!traffic.containsKey(call.getContarct_id())) {
                         traffic.put(tr.getContract_id(), tr);
@@ -233,6 +248,10 @@ public class Antifraud extends GlobalScriptBase {
         print("Количество заблокированных абонентов " + lok);
     }
 
+    private Timestamp ToTimestamp(Calendar calendar) {
+        return TimeUtils.convertCalendarToTimestamp(calendar);
+    }
+
     /**
      * Получение данных о трафике абонентов
      *
@@ -242,12 +261,11 @@ public class Antifraud extends GlobalScriptBase {
     private HashMap<Integer, Traffic> getTraffic(Calendar from, Calendar to) throws SQLException {
         HashMap<Integer, Traffic> traffic = new HashMap<>();
         String query = "SELECT `id`, `cid`, `interzone`, `intercity`, `international`, `day`, `status`,`time1`, `time2` \n"
-                + "FROM traffic  \n"
-                + "WHERE (`status`=0) AND (`day`=?) AND (?>`time2`)"
-                + "GROUP BY `cid`";
+                + "FROM traffic \n"
+                + "WHERE `day`=? \n";
         try (PreparedStatement ps = con.prepareStatement(query)) {
             ps.setDate(1, TimeUtils.convertCalendarToSqlDate(from));
-            ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(from));
+   //         ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(from));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     traffic.put(rs.getInt("cid"), new Traffic(rs.getInt("id"),
@@ -257,11 +275,12 @@ public class Antifraud extends GlobalScriptBase {
                             rs.getInt("international"),
                             rs.getDate("day"),
                             rs.getByte("status"),
-                            rs.getTime("date1"),
-                            rs.getTime("date2")));
+                            rs.getTimestamp("time1"),
+                            rs.getTimestamp("time2")));
                 }
             }
         } finally {
+
             return traffic;
         }
     }
@@ -290,8 +309,8 @@ public class Antifraud extends GlobalScriptBase {
                 + "GROUP BY calls.`cid`, calls.`category`";
 
         try (PreparedStatement ps = con.prepareStatement(query)) {
-            ps.setTimestamp(1, TimeUtils.convertCalendarToTimestamp(from));
-            ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(to));
+            ps.setTimestamp(1, ToTimestamp(from));
+            ps.setTimestamp(2, ToTimestamp(to));
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -345,16 +364,48 @@ public class Antifraud extends GlobalScriptBase {
             ps.setInt(4, tr.getInternational());
             ps.setDate(5, TimeUtils.convertCalendarToSqlDate(from));
             ps.setInt(6, tr.getStatus());
-            ps.setTimestamp(7, TimeUtils.convertCalendarToTimestamp(from));
-            ps.setTimestamp(8, TimeUtils.convertCalendarToTimestamp(to));
+            ps.setString(7, TimeUtils.convertCalendarToDateTimeString(from));
+            ps.setString(8, TimeUtils.convertCalendarToDateTimeString(to));
             ps.setInt(9, tr.getInterzone());
             ps.setInt(10, tr.getIntercity());
             ps.setInt(11, tr.getInternational());
-            ps.setTimestamp(12, TimeUtils.convertCalendarToTimestamp(from));
-            ps.setTimestamp(13, TimeUtils.convertCalendarToTimestamp(to));
+            ps.setString(12, TimeUtils.convertCalendarToDateTimeString(from));
+            ps.setString(13, TimeUtils.convertCalendarToDateTimeString(to));
             ps.executeUpdate();
         }
     }
+    
+    /**
+     * Обновление информации о данных трафика
+     * @param tr
+     * @param from
+     * @param to
+     * @throws SQLException 
+     */
+    private void UpdateDataInTraffic(Traffic tr, Calendar from, Calendar to) throws SQLException {
+        String query = "INSERT INTO traffic (`id`,`cid`, `interzone`, `intercity`, `international`, `day`, `status`,`time1`,`time2`)\n"
+                + "VALUES ('',?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE \n"
+                + "interzone=?, intercity=?, international=?, time1=?, time2=?";
+
+        try (PreparedStatement ps = con.prepareStatement(query)) {
+            ps.setInt(1, tr.getContract_id());
+            ps.setInt(2, tr.getInterzone());
+            ps.setInt(3, tr.getIntercity());
+            ps.setInt(4, tr.getInternational());
+            ps.setDate(5, TimeUtils.convertCalendarToSqlDate(from));
+            ps.setInt(6, tr.getStatus());
+            ps.setString(7, TimeUtils.convertCalendarToDateTimeString(from));
+            ps.setString(8, TimeUtils.convertCalendarToDateTimeString(to));
+            ps.setInt(9, tr.getInterzone());
+            ps.setInt(10, tr.getIntercity());
+            ps.setInt(11, tr.getInternational());
+            ps.setString(12, TimeUtils.convertCalendarToDateTimeString(from));
+            ps.setString(13, TimeUtils.convertCalendarToDateTimeString(to));
+            ps.executeUpdate();
+        }
+        
+    }
+    
 
     /**
      * Блокировка абонента
