@@ -21,8 +21,8 @@ public class Traffic {
      * @param international потраченные минуты по международным звонкам
      * @param day день звонка
      * @param status статус догвора
-     * @param date1 дата начала предыдущей выборки
-     * @param date2 дата конца предыдущей выборки
+     * @param time1 дата начала предыдущей выборки
+     * @param time2 дата конца предыдущей выборки
      */
     Traffic(int id, int contract_id, int interzone, int intercity, int international, Date day, int status, Timestamp time1, Timestamp time2) {
         this.id = id;
@@ -39,6 +39,8 @@ public class Traffic {
     /**
      *
      * @param contract_id номер контракта
+     * @param time1 дата начала предыдущей выборки
+     * @param time2 дата конца предыдущей выборки
      */
     public Traffic(int contract_id, Timestamp time1, Timestamp time2) {
         this.cid = contract_id;
