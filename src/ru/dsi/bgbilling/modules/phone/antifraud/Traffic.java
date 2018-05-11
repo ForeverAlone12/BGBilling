@@ -40,12 +40,14 @@ public class Traffic {
      *
      * @param contract_id номер контракта
      */
-    public Traffic(int contract_id) {
+    public Traffic(int contract_id, Timestamp time1, Timestamp time2) {
         this.cid = contract_id;
         this.intercity = 0;
         this.international = 0;
         this.interzone = 0;
         this.status = 0;
+        this.from = time1;
+        this.to = time2;
     }
 
     /**

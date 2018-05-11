@@ -166,7 +166,7 @@ public class Antifraud extends GlobalScriptBase {
                 throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
             }
             // получение данных о трафике абонента
-            tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id()));
+            tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id(), ToTimestamp(from), ToTimestamp(to)));
             print("Статус договора = " + tr.getStatus());
 
             try {     // вычисление длительности разговора
@@ -223,7 +223,7 @@ public class Antifraud extends GlobalScriptBase {
 
                 try {
                     // если границы текущей выборки попадают (но не принадлежат) в границы прошлой
-                    if (ToTimestamp(from).after(tr.getDateFrom()) && ToTimestamp(from).before(tr.getDateTo()) || ToTimestamp(to).before(tr.getDateTo()) && ToTimestamp(to).after(tr.getDateFrom())  ) {
+                    if (ToTimestamp(from).after(tr.getDateFrom()) && ToTimestamp(from).before(tr.getDateTo()) || ToTimestamp(to).before(tr.getDateTo()) && ToTimestamp(to).after(tr.getDateFrom())) {
                         // данные обновляются
                         UpdateDataInTraffic(tr, from, to);
                     } else {
@@ -265,7 +265,7 @@ public class Antifraud extends GlobalScriptBase {
                 + "WHERE `day`=? \n";
         try (PreparedStatement ps = con.prepareStatement(query)) {
             ps.setDate(1, TimeUtils.convertCalendarToSqlDate(from));
-   //         ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(from));
+            //         ps.setTimestamp(2, TimeUtils.convertCalendarToTimestamp(from));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     traffic.put(rs.getInt("cid"), new Traffic(rs.getInt("id"),
@@ -374,13 +374,14 @@ public class Antifraud extends GlobalScriptBase {
             ps.executeUpdate();
         }
     }
-    
+
     /**
      * Обновление информации о данных трафика
+     *
      * @param tr
      * @param from
      * @param to
-     * @throws SQLException 
+     * @throws SQLException
      */
     private void UpdateDataInTraffic(Traffic tr, Calendar from, Calendar to) throws SQLException {
         String query = "INSERT INTO traffic (`id`,`cid`, `interzone`, `intercity`, `international`, `day`, `status`,`time1`,`time2`)\n"
@@ -403,9 +404,8 @@ public class Antifraud extends GlobalScriptBase {
             ps.setString(13, TimeUtils.convertCalendarToDateTimeString(to));
             ps.executeUpdate();
         }
-        
+
     }
-    
 
     /**
      * Блокировка абонента
