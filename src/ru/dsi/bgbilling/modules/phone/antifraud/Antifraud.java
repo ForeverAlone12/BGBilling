@@ -223,7 +223,7 @@ public class Antifraud extends GlobalScriptBase {
 
                 try {
                     // если границы текущей выборки попадают (но не принадлежат) в границы прошлой
-                    if (ToTimestamp(from).after(tr.getDateFrom()) || ToTimestamp(to).before(tr.getDateTo())) {
+                    if (ToTimestamp(from).after(tr.getDateFrom()) && ToTimestamp(from).before(tr.getDateTo()) || ToTimestamp(to).before(tr.getDateTo()) && ToTimestamp(to).after(tr.getDateFrom())  ) {
                         // данные обновляются
                         UpdateDataInTraffic(tr, from, to);
                     } else {
