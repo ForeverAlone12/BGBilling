@@ -167,17 +167,10 @@ public class Antifraud extends GlobalScriptBase {
                 throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
             }
             // получение данных о трафике абонента
-            tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id(), ToTimestamp(from), ToTimestamp(to), call.getDate()));
+            tr = new Traffic(call.getContarct_id(), ToTimestamp(from), ToTimestamp(to), call.getDate());
             print("Статус договора = " + tr.getStatus());
 
             try {     // вычисление длительности разговора
-
-                // если какая-нибудь из текущих границ выборки попадают в промежуток предыдущей
-                //if (isExists(tr, from, to)) {
-                    tr.setInternational(0);
-                    tr.setIntercity(0);
-                    tr.setInterzone(0);
-                //}
 
                 switch (call.getCategories()) {
                     case "1":
@@ -224,31 +217,25 @@ public class Antifraud extends GlobalScriptBase {
                             default:
                                 throw new Exception("Неопознанный тип договора");
                         }
+                    } catch (SQLException e) {
+                        // logger.error("Не удалось занести данные в БД. Номер контракта: " + call.getContarct_id());
+                        // logger.error(ex.getMessage(), e);
+                        throw new BGException("Не удалось данные в БД. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
                     } catch (Exception ex) {
                         // logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договра: " + contract.getPersonType());
                         // logger.error(ex.getMessage(), ex);
                         throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договора: " + contract.getPersonType() + "\n" + ex.getMessage() + "\n" + ex);
                     }
                 }
-
                 try {
-                    // имеются ли уже данные о трафике за запрашиваемое время
-                   // if (isExists(tr, from, to)) {
-                        //  UpdateDataInTraffic(tr, from, to);
-                     //   AddDataInTraffic(tr, from, to);
-                    //} else {
-                        //   AddDataInTraffic(tr, from, to);
-                        UpdateDataInTraffic(tr, from, to);
-                   // }
+                    UpdateDataInTraffic(tr, from, to);
 
                     // если нет данных о звонках
                     if (!traffic.containsKey(call.getContarct_id())) {
                         traffic.put(tr.getContract_id(), tr);
                     }
                 } catch (SQLException ex) {
-                    //logger.error("Ошибка вставки данных о звонках абонента: " + call.getContarct_id());
-                    //logger.error(ex.getMessage(), ex);
-                    throw new BGException("Ошибка вставки данных о звонках абонента: " + call.getContarct_id() + "\n" + ex.getMessage() + "\n" + ex);
+                    throw new BGException("Ошибка вставки данных о трафике абонента: " + call.getContarct_id() + "\n" + ex.getMessage() + "\n" + ex);
                 }
             }// if (users.contain...)
 
@@ -293,10 +280,12 @@ public class Antifraud extends GlobalScriptBase {
                             rs.getTimestamp("time1"),
                             rs.getTimestamp("time2")));
                 }
+            } catch (SQLException ex) {
+                throw new SQLException();
             }
-        } finally {
-            return traffic;
         }
+        return traffic;
+
     }
 
     /**
@@ -326,7 +315,7 @@ public class Antifraud extends GlobalScriptBase {
         ArrayList<Calls> calls = new ArrayList<>();
 
         String query = "SELECT calls.`cid`, calls.`category`, sum(calls.`round_session_time`) as `time`, calls.`day` \n"
-                + "FROM (SELECT s.`id`, s.`cid`, s.`from_number_164`, s.`to_number_164`, s.`round_session_time`, s.`session_start` as `day` \n"
+                + "FROM (SELECT s.`id`, s.`cid`, s.`from_number_164`, s.`to_number_164`, s.`round_session_time`, s.`session_start` as `day`, \n"
                 + "IF (s.`to_number_164` LIKE '8%', '1', \n"
                 + "IF (SUBSTR(s.`to_number_164`, 2, 3)=SUBSTR(s.`from_number_164`, 2, 3) \n"
                 + "OR is_irk_mobile(s.`to_number_164`),'3','2') \n"
@@ -344,10 +333,11 @@ public class Antifraud extends GlobalScriptBase {
                 while (rs.next()) {
                     calls.add(new Calls(rs.getInt("cid"), rs.getString("category"), rs.getInt("time"), rs.getDate("day")));
                 }
+            } catch (SQLException ex) {
+                throw new SQLException();
             }
-        } finally {
-            return calls;
         }
+        return calls;
 
     }
 
@@ -400,6 +390,8 @@ public class Antifraud extends GlobalScriptBase {
             ps.setString(12, TimeUtils.convertCalendarToDateTimeString(from));
             ps.setString(13, TimeUtils.convertCalendarToDateTimeString(to));
             ps.executeUpdate();
+        } catch (SQLException ex) {
+            throw new SQLException();
         }
     }
 
@@ -431,6 +423,8 @@ public class Antifraud extends GlobalScriptBase {
             ps.setString(12, TimeUtils.convertCalendarToDateTimeString(from));
             ps.setString(13, TimeUtils.convertCalendarToDateTimeString(to));
             ps.executeUpdate();
+        } catch (SQLException ex) {
+            throw new SQLException();
         }
 
     }
@@ -444,27 +438,41 @@ public class Antifraud extends GlobalScriptBase {
     private void LockContract(int contract) throws Exception {
 
         con.setAutoCommit(false);
-
-        // изменение статуса контракта в системе BGBilling
         ContractDao cd = new ContractDao(con, 0);
-        Contract c = cd.get(contract);
+        Contract c;
+        try {
+            // изменение статуса контракта в системе BGBilling
 
-        c.setStatus((byte) 4);
-        cd.update(c);
+            c = cd.get(contract);
 
-        // занесение в таблицу lockabonent заблокированных абонентов
-        String query = "INSERT IGNORE INTO lockabonent (`id`, `fc`, `cid`) \n"
-                + " VALUES ('', ?, ?)";
-        PreparedStatement ps = con.prepareStatement(query);
-        ps.setInt(1, c.getPersonType());
-        ps.setInt(2, contract);
-        ps.executeUpdate();
+            c.setStatus((byte) 4);
+            cd.update(c);
+        } catch (Exception ex) {
+            throw new Exception("Ошибка при попытки смены статуса договора абонента: " + contract);
+        }
 
-        // изменение данных в таблице traffic
-        query = "UPDATE traffic SET `status`=4 WHERE `cid`=" + contract;
-        ps = con.prepareStatement(query);
-        ps.executeUpdate();
+        String query;
+        PreparedStatement ps;
+        try {
+            // занесение в таблицу lockabonent заблокированных абонентов
+            query = "INSERT IGNORE INTO lockabonent (`id`, `fc`, `cid`) \n"
+                    + " VALUES ('', ?, ?)";
+            ps = con.prepareStatement(query);
+            ps.setInt(1, c.getPersonType());
+            ps.setInt(2, contract);
+            ps.executeUpdate();
+        } catch (SQLException ex) {
+            throw new SQLException("Ошибка при добавлении абонента " + contract + " в список заблокированных лиц");
+        }
 
+        try {
+            // изменение данных в таблице traffic
+            query = "UPDATE traffic SET `status`=4 WHERE `cid`=" + contract;
+            ps = con.prepareStatement(query);
+            ps.executeUpdate();
+        } catch (SQLException ex) {
+            throw new SQLException("Ошибка при смене абонента " + contract + " в таблице traffic");
+        }
         ps.close();
 
         con.commit();
@@ -541,6 +549,8 @@ public class Antifraud extends GlobalScriptBase {
                 while (rs.next()) {
                     rezult = rs.getInt("sum_interzone");
                 }
+            } catch (SQLException ex) {
+                throw new SQLException("Ошибка в запросе вычисления общего количества времени разговора по внутризоновым соединениям");
             }
         }
         return rezult;
@@ -559,6 +569,8 @@ public class Antifraud extends GlobalScriptBase {
                 while (rs.next()) {
                     rezult = rs.getInt("sum_intercity");
                 }
+            } catch (SQLException ex) {
+                throw new SQLException("Ошибка в запросе вычисления общего количества времени разговора по междугородним соединениям");
             }
         }
         return rezult;
@@ -577,6 +589,8 @@ public class Antifraud extends GlobalScriptBase {
                 while (rs.next()) {
                     rezult = rs.getInt("sum_international");
                 }
+            } catch (SQLException ex) {
+                throw new SQLException("Ошибка в запросе вычисления общего количества времени разговора по международным соединениям");
             }
         }
         return rezult;
