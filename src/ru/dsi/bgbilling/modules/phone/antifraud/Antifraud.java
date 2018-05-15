@@ -119,7 +119,7 @@ public class Antifraud extends GlobalScriptBase {
 
         ContractDao cd = new ContractDao(con, 0);
         Contract contract;
-        while (end.before(to) || end.equals(to)) {
+        while (start.before(to)) {
             print("Начало выборки = " + start.getTime());
             print("Конец выборки = " + end.getTime());
             // считывание данных об обработанных звонках за день
@@ -234,12 +234,9 @@ public class Antifraud extends GlobalScriptBase {
                         }
                     }
                     try {
-                        UpdateDataInTraffic(tr, start, end);
-
-                        // если нет данных о звонках
-                        if (!traffic.containsKey(call.getContarct_id())) {
-                            traffic.put(tr.getContract_id(), tr);
-                        }
+                        UpdateDataInTraffic(tr, start, end);                        
+                        traffic.put(tr.getContract_id(), tr);
+                     
                     } catch (SQLException ex) {
                         throw new BGException("Ошибка вставки данных о трафике абонента: " + call.getContarct_id() + "\n" + ex.getMessage() + "\n" + ex);
                     }
