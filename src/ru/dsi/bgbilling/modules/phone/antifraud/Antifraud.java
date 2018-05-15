@@ -81,21 +81,17 @@ public class Antifraud extends GlobalScriptBase {
         Calendar from = (Calendar) to.clone();
 
         if (recordate == 0) {
-            // --- удалить на боевой версии
-            to.set(Calendar.YEAR, 2017);
-            //месяцы в Calendar нумеруются с 0. Так исторически сложилось :)
-            to.set(Calendar.MONTH, 7);
-            to.set(Calendar.DAY_OF_MONTH, 1);
-            to.set(Calendar.HOUR_OF_DAY, 2);
-            to.set(Calendar.MINUTE, 0);
-            to.set(Calendar.SECOND, 0);
-            // --- конец удаления    
-
-            from = (Calendar) to.clone();
             from.add(Calendar.HOUR_OF_DAY, -1);
         } else {
             from.setTime(Timestamp.valueOf(setting.get("startdate")));
             to.setTime(Timestamp.valueOf(setting.get("enddate")));
+        }
+
+        // проверка
+        if (from.after(to)) {
+            Calendar tmp = from;
+            from = to;
+            to = tmp;
         }
 
         print("Начало выборки = " + from.getTime());
