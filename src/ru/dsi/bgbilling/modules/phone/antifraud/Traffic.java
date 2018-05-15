@@ -36,10 +36,12 @@ public class Traffic {
     }
 
     /**
+     * Данные трафика
      *
      * @param contract_id номер контракта
      * @param time1 дата начала предыдущей выборки
      * @param time2 дата конца предыдущей выборки
+     * @param day день, за который производится выборка
      */
     public Traffic(int contract_id, Timestamp time1, Timestamp time2, Date day) {
         this.cid = contract_id;
@@ -98,10 +100,20 @@ public class Traffic {
      */
     private Timestamp to;
 
+    /**
+     * Получить день за котрый производится выборка
+     *
+     * @return
+     */
     public Date getDate() {
         return day;
     }
 
+    /**
+     * Установить день за который производится выборка
+     *
+     * @param day
+     */
     public void setDate(Date day) {
         this.day = day;
     }
@@ -142,6 +154,12 @@ public class Traffic {
         return international;
     }
 
+    /**
+     * Получение статуса договра. 0 - подключен, 1 - на отключении, 2 -
+     * отключен, 3 - закрыт, 4 - приостановлен, 5 - на подключении
+     *
+     * @return статус договора
+     */
     public int getStatus() {
         return status;
     }

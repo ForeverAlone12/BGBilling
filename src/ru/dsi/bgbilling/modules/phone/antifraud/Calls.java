@@ -15,6 +15,7 @@ public class Calls {
      * @param contract_id номер контракта
      * @param categories категория звонка
      * @param session_time продолжительность звонка
+     * @param day день звонка
      */
     Calls(int contract_id, String categories, int session_time, Date day) {
         this.cid = contract_id;
@@ -36,6 +37,9 @@ public class Calls {
      */
     private int session_time;
 
+    /**
+     * День звонка
+     */
     private Date day;
 
     /**
@@ -71,6 +75,12 @@ public class Calls {
         return categories;
     }
 
+    /**
+     * Получение даты за которую был произведён звонок
+     *
+     * @return дата звонка
+     * 
+     */
     public Date getDate() {
         return day;
     }

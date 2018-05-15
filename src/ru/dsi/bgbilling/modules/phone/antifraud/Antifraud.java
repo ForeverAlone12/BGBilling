@@ -4,6 +4,7 @@ package ru.dsi.bgbilling.modules.phone.antifraud;
 import java.util.HashMap;
 import java.sql.ResultSet;
 import java.util.Calendar;
+import java.sql.Timestamp;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.sql.SQLException;
@@ -11,7 +12,6 @@ import org.apache.log4j.Logger;
 import java.sql.PreparedStatement;
 import ru.bitel.common.ParameterMap;
 import bitel.billing.common.TimeUtils;
-import java.sql.Timestamp;
 import ru.bitel.common.sql.ConnectionSet;
 import ru.bitel.bgbilling.server.util.Setup;
 import ru.bitel.bgbilling.common.BGException;
@@ -216,7 +216,7 @@ public class Antifraud extends GlobalScriptBase {
                     } catch (SQLException e) {
                         // logger.error("Не удалось занести данные в БД. Номер контракта: " + call.getContarct_id());
                         // logger.error(ex.getMessage(), e);
-                        throw new BGException("Не удалось данные в БД. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
+                        throw new BGException("Не удалось добавить данные в БД. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
                     } catch (Exception ex) {
                         // logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договра: " + contract.getPersonType());
                         // logger.error(ex.getMessage(), ex);
@@ -242,6 +242,7 @@ public class Antifraud extends GlobalScriptBase {
     }
 
     /**
+     * Преобразование Calendar в Timestamp
      *
      * @param calendar
      * @return
@@ -285,20 +286,6 @@ public class Antifraud extends GlobalScriptBase {
     }
 
     /**
-     * Осуществлялась выборка данных с from по to
-     *
-     * @param tr данные трафика
-     * @param from начало выборки
-     * @param to конец выборки
-     * @return trrue - диапозон выборки принадлежит диапозону прошлой выборки,
-     * иначе - false
-     */
-    private boolean isExists(Traffic tr, Calendar from, Calendar to) {
-        return (ToTimestamp(from).after(tr.getDateFrom()) && ToTimestamp(from).before(tr.getDateTo()) || ToTimestamp(from).equals(tr.getDateFrom())) // левая граница входит в промежуток
-                || (ToTimestamp(to).before(tr.getDateTo()) && ToTimestamp(to).after(tr.getDateFrom()) || ToTimestamp(to).equals(tr.getDateTo())); // правая граница входит в промежуток
-    }
-
-    /**
      * Выбор данных о звонках
      *
      * @param from дата начало выборки
@@ -338,10 +325,9 @@ public class Antifraud extends GlobalScriptBase {
     }
 
     /**
-     * Получение данных о пользователей, которых нельзя блокировать
+     * Получение списка пользователей, которых нельзя блокировать
      *
-     * @param con
-     * @return
+     * @return список пользователей, которых нельзя блокировать
      * @throws SQLException
      */
     private ArrayList<Users> getUsers() throws SQLException {
@@ -353,50 +339,19 @@ public class Antifraud extends GlobalScriptBase {
             while (rs.next()) {
                 users.add(new Users(rs.getInt("id"), rs.getInt("cid")));
             }
-        } finally {
-            return users;
-        }
-    }
-
-    /**
-     * Добавление информации о трафике абонента
-     *
-     * @param tr данные трафика
-     * @param from начало выборки
-     * @param toконец выборки
-     * @throws SQLException
-     */
-    private void AddDataInTraffic(Traffic tr, Calendar from, Calendar to) throws SQLException {
-        String query = "INSERT INTO traffic (`id`,`cid`, `interzone`, `intercity`, `international`, `day`, `status`,`time1`,`time2`)\n"
-                + "VALUES ('',?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE \n"
-                + "interzone=interzone+?, intercity=intercity+?, international=international+?, time1=?, time2=?";
-
-        try (PreparedStatement ps = con.prepareStatement(query)) {
-            ps.setInt(1, tr.getContract_id());
-            ps.setInt(2, tr.getInterzone());
-            ps.setInt(3, tr.getIntercity());
-            ps.setInt(4, tr.getInternational());
-            ps.setDate(5, TimeUtils.convertCalendarToSqlDate(from));
-            ps.setInt(6, tr.getStatus());
-            ps.setString(7, TimeUtils.convertCalendarToDateTimeString(from));
-            ps.setString(8, TimeUtils.convertCalendarToDateTimeString(to));
-            ps.setInt(9, tr.getInterzone());
-            ps.setInt(10, tr.getIntercity());
-            ps.setInt(11, tr.getInternational());
-            ps.setString(12, TimeUtils.convertCalendarToDateTimeString(from));
-            ps.setString(13, TimeUtils.convertCalendarToDateTimeString(to));
-            ps.executeUpdate();
         } catch (SQLException ex) {
             throw new SQLException();
         }
+        return users;
+
     }
 
     /**
      * Обновление информации о данных трафика
      *
-     * @param tr
-     * @param from
-     * @param to
+     * @param tr данные трафика
+     * @param from время с которог производится выборка
+     * @param to время по которое производится выборка
      * @throws SQLException
      */
     private void UpdateDataInTraffic(Traffic tr, Calendar from, Calendar to) throws SQLException {
@@ -532,7 +487,14 @@ public class Antifraud extends GlobalScriptBase {
         return session > limitSecondsInternational;
     }
 
-    private int SumInterzone(Traffic traffic) throws SQLException {
+    /**
+     * Получение длительности разговора за день по внутризоновому соединению
+     *
+     * @param traffic данные трафика
+     * @return длительность разговора за день по внутризоновому соединению
+     * @throws SQLException
+     */
+    private int SumInterzone(Traffic traffic) throws Exception {
         String query = "SELECT sum(`interzone`) as `sum_interzone` \n"
                 + "FROM traffic \n"
                 + "WHERE `cid`=? AND `day`=?";
@@ -549,10 +511,20 @@ public class Antifraud extends GlobalScriptBase {
                 throw new SQLException("Ошибка в запросе вычисления общего количества времени разговора по внутризоновым соединениям");
             }
         }
+        if (rezult == -1) {
+            throw new Exception("Не удалось вычислить длительность разговора по внутризоновому соединению");
+        }
         return rezult;
     }
 
-    private int SumIntercity(Traffic traffic) throws SQLException {
+    /**
+     * Получение длительности разговора за день по междугороднему соединению
+     *
+     * @param traffic данные трафика
+     * @return длительность разговора за день по междугороднему соединению
+     * @throws Exception
+     */
+    private int SumIntercity(Traffic traffic) throws Exception {
         String query = "SELECT sum(`intercity`) as `sum_intercity` \n"
                 + "FROM traffic \n"
                 + "WHERE `cid`=? AND `day`=?";
@@ -569,10 +541,20 @@ public class Antifraud extends GlobalScriptBase {
                 throw new SQLException("Ошибка в запросе вычисления общего количества времени разговора по междугородним соединениям");
             }
         }
+        if (rezult == -1) {
+            throw new Exception("Не удалось вычислить длительность разговора по междугороднему соединению");
+        }
         return rezult;
     }
 
-    private int SumInternational(Traffic traffic) throws SQLException {
+    /**
+     * Получение длительности разговора за день по международному соединению
+     *
+     * @param traffic данные трафика
+     * @return длительность разговора за день по международному соединению
+     * @throws Exception
+     */
+    private int SumInternational(Traffic traffic) throws Exception {
         String query = "SELECT sum(`international`) as `sum_international` \n"
                 + "FROM traffic \n"
                 + "WHERE `cid`=? AND `day`=?";
@@ -588,6 +570,9 @@ public class Antifraud extends GlobalScriptBase {
             } catch (SQLException ex) {
                 throw new SQLException("Ошибка в запросе вычисления общего количества времени разговора по международным соединениям");
             }
+        }
+        if (rezult == -1) {
+            throw new Exception("Не удалось вычислить длительность разговора по международному соединению");
         }
         return rezult;
     }
