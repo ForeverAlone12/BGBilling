@@ -93,6 +93,7 @@ public class Antifraud extends GlobalScriptBase {
             from = to;
             to = tmp;
         }
+        
 
         HashMap<Integer, Traffic> traffic = new HashMap<>();
         ArrayList<Calls> calls = new ArrayList<>();
@@ -119,7 +120,7 @@ public class Antifraud extends GlobalScriptBase {
 
         ContractDao cd = new ContractDao(con, 0);
         Contract contract;
-        while (start.before(to)) {
+        while (!end.before(to)) {
             print("Начало выборки = " + start.getTime());
             print("Конец выборки = " + end.getTime());
             // считывание данных об обработанных звонках за день
