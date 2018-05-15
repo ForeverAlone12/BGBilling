@@ -149,6 +149,7 @@ public class Antifraud extends GlobalScriptBase {
         }
 
         lok = 0;
+
         // определение превышения трафика
         for (int i = 0; i < calls.size(); i++) {
             print("№ необработанного звонка: " + (i + 1));
@@ -166,32 +167,32 @@ public class Antifraud extends GlobalScriptBase {
                 throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
             }
             // получение данных о трафике абонента
-            tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id(), ToTimestamp(from), ToTimestamp(to)));
+            tr = traffic.getOrDefault(call.getContarct_id(), new Traffic(call.getContarct_id(), ToTimestamp(from), ToTimestamp(to), call.getDate()));
             print("Статус договора = " + tr.getStatus());
 
             try {     // вычисление длительности разговора
-                
+
                 // если какая-нибудь из текущих границ выборки попадают в промежуток предыдущей
-                if (isExists(tr, from, to)) {                    
+                //if (isExists(tr, from, to)) {
                     tr.setInternational(0);
                     tr.setIntercity(0);
                     tr.setInterzone(0);
+                //}
+
+                switch (call.getCategories()) {
+                    case "1":
+                        tr.setInternational(tr.getInternational() + calls.get(i).getTime());
+                        break;
+                    case "2":
+                        tr.setIntercity(tr.getIntercity() + calls.get(i).getTime());
+                        break;
+                    case "3":
+                        tr.setInterzone(tr.getInterzone() + calls.get(i).getTime());
+                        break;
+                    default:
+                        throw new Exception("Неопознанный тип звонка");
                 }
-                    
-                    switch (call.getCategories()) {
-                        case "1":
-                            tr.setInternational(tr.getInternational() + calls.get(i).getTime());
-                            break;
-                        case "2":
-                            tr.setIntercity(tr.getIntercity() + calls.get(i).getTime());
-                            break;
-                        case "3":
-                            tr.setInterzone(tr.getInterzone() + calls.get(i).getTime());
-                            break;
-                        default:
-                            throw new Exception("Неопознанный тип звонка");
-                    }
-                
+
             } catch (Exception ex) {
                 //  logger.error("Не удалось распознать тип звонка. Полученный тип : " + call.getCategories() + "\n");
                 //  logger.error(ex.getMessage(), ex);
@@ -207,14 +208,14 @@ public class Antifraud extends GlobalScriptBase {
                     try {
                         switch (contract.getPersonType()) {
                             case 0:
-                                if (InZoneNatural(tr.getInterzone()) || IntercityNatural(tr.getIntercity()) || International(tr.getInternational())) {
+                                if (InZoneNatural(SumInterzone(tr)) || IntercityNatural(SumIntercity(tr)) || International(SumInternational(tr))) {
                                     LockContract(call.getContarct_id());
                                     tr.setStatus(4);
                                     print("У контракта " + contract + " сменился статус на " + tr.getStatus());
                                 }
                                 break;
                             case 1:
-                                if (InZoneLegal(tr.getInterzone()) || IntercityLegal(tr.getIntercity()) || International(tr.getInternational())) {
+                                if (InZoneLegal(SumInterzone(tr)) || IntercityLegal(SumIntercity(tr)) || International(SumInternational(tr))) {
                                     LockContract(call.getContarct_id());
                                     tr.setStatus(4);
                                     print("У контракта " + contract + " сменился статус на " + tr.getStatus());
@@ -231,11 +232,14 @@ public class Antifraud extends GlobalScriptBase {
                 }
 
                 try {
-                    if (isExists(tr, from, to)) {
+                    // имеются ли уже данные о трафике за запрашиваемое время
+                   // if (isExists(tr, from, to)) {
+                        //  UpdateDataInTraffic(tr, from, to);
+                     //   AddDataInTraffic(tr, from, to);
+                    //} else {
+                        //   AddDataInTraffic(tr, from, to);
                         UpdateDataInTraffic(tr, from, to);
-                    } else {
-                        AddDataInTraffic(tr, from, to);
-                    }
+                   // }
 
                     // если нет данных о звонках
                     if (!traffic.containsKey(call.getContarct_id())) {
@@ -291,20 +295,22 @@ public class Antifraud extends GlobalScriptBase {
                 }
             }
         } finally {
-
             return traffic;
         }
     }
 
     /**
      * Осуществлялась выборка данных с from по to
+     *
      * @param tr данные трафика
      * @param from начало выборки
-     * @param to конец выборки 
-     * @return trrue - диапозон выборки принадлежит диапозону прошлой выборки, иначе - false
+     * @param to конец выборки
+     * @return trrue - диапозон выборки принадлежит диапозону прошлой выборки,
+     * иначе - false
      */
     private boolean isExists(Traffic tr, Calendar from, Calendar to) {
-        return (ToTimestamp(from).after(tr.getDateFrom()) && ToTimestamp(from).before(tr.getDateTo())) || (ToTimestamp(to).before(tr.getDateTo()) && ToTimestamp(to).after(tr.getDateFrom()) || (ToTimestamp(from).equals(tr.getDateFrom()) && ToTimestamp(to).equals(tr.getDateTo())));
+        return (ToTimestamp(from).after(tr.getDateFrom()) && ToTimestamp(from).before(tr.getDateTo()) || ToTimestamp(from).equals(tr.getDateFrom())) // левая граница входит в промежуток
+                || (ToTimestamp(to).before(tr.getDateTo()) && ToTimestamp(to).after(tr.getDateFrom()) || ToTimestamp(to).equals(tr.getDateTo())); // правая граница входит в промежуток
     }
 
     /**
@@ -319,8 +325,8 @@ public class Antifraud extends GlobalScriptBase {
     private ArrayList<Calls> getCalls(Calendar from, Calendar to) throws SQLException {
         ArrayList<Calls> calls = new ArrayList<>();
 
-        String query = "SELECT calls.`cid`, calls.`category`, sum(calls.`round_session_time`) as `time` \n"
-                + "FROM (SELECT s.`id`, s.`cid`, s.`from_number_164`, s.`to_number_164`, s.`round_session_time`, \n"
+        String query = "SELECT calls.`cid`, calls.`category`, sum(calls.`round_session_time`) as `time`, calls.`day` \n"
+                + "FROM (SELECT s.`id`, s.`cid`, s.`from_number_164`, s.`to_number_164`, s.`round_session_time`, s.`session_start` as `day` \n"
                 + "IF (s.`to_number_164` LIKE '8%', '1', \n"
                 + "IF (SUBSTR(s.`to_number_164`, 2, 3)=SUBSTR(s.`from_number_164`, 2, 3) \n"
                 + "OR is_irk_mobile(s.`to_number_164`),'3','2') \n"
@@ -336,7 +342,7 @@ public class Antifraud extends GlobalScriptBase {
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    calls.add(new Calls(rs.getInt("cid"), rs.getString("category"), rs.getInt("time")));
+                    calls.add(new Calls(rs.getInt("cid"), rs.getString("category"), rs.getInt("time"), rs.getDate("day")));
                 }
             }
         } finally {
@@ -520,5 +526,59 @@ public class Antifraud extends GlobalScriptBase {
      */
     private boolean International(int session) {
         return session > limitSecondsInternational;
+    }
+
+    private int SumInterzone(Traffic traffic) throws SQLException {
+        String query = "SELECT sum(`interzone`) as `sum_interzone` \n"
+                + "FROM traffic \n"
+                + "WHERE `cid`=? AND `day`=?";
+        int rezult = -1;
+        try (PreparedStatement ps = con.prepareStatement(query)) {
+            ps.setInt(1, traffic.getContract_id());
+            ps.setDate(2, traffic.getDate());
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    rezult = rs.getInt("sum_interzone");
+                }
+            }
+        }
+        return rezult;
+    }
+
+    private int SumIntercity(Traffic traffic) throws SQLException {
+        String query = "SELECT sum(`intercity`) as `sum_intercity` \n"
+                + "FROM traffic \n"
+                + "WHERE `cid`=? AND `day`=?";
+        int rezult = -1;
+        try (PreparedStatement ps = con.prepareStatement(query)) {
+            ps.setInt(1, traffic.getContract_id());
+            ps.setDate(2, traffic.getDate());
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    rezult = rs.getInt("sum_intercity");
+                }
+            }
+        }
+        return rezult;
+    }
+
+    private int SumInternational(Traffic traffic) throws SQLException {
+        String query = "SELECT sum(`international`) as `sum_international` \n"
+                + "FROM traffic \n"
+                + "WHERE `cid`=? AND `day`=?";
+        int rezult = -1;
+        try (PreparedStatement ps = con.prepareStatement(query)) {
+            ps.setInt(1, traffic.getContract_id());
+            ps.setDate(2, traffic.getDate());
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    rezult = rs.getInt("sum_international");
+                }
+            }
+        }
+        return rezult;
     }
 }

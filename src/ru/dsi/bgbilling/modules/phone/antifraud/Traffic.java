@@ -1,7 +1,6 @@
 package ru.dsi.bgbilling.modules.phone.antifraud;
 
 import java.sql.Date;
-import java.sql.Time;
 import java.sql.Timestamp;
 
 /**
@@ -42,7 +41,7 @@ public class Traffic {
      * @param time1 дата начала предыдущей выборки
      * @param time2 дата конца предыдущей выборки
      */
-    public Traffic(int contract_id, Timestamp time1, Timestamp time2) {
+    public Traffic(int contract_id, Timestamp time1, Timestamp time2, Date day) {
         this.cid = contract_id;
         this.intercity = 0;
         this.international = 0;
@@ -50,6 +49,7 @@ public class Traffic {
         this.status = 0;
         this.from = time1;
         this.to = time2;
+        this.day = day;
     }
 
     /**
@@ -97,6 +97,14 @@ public class Traffic {
      * Дата окончания прошлой выборки
      */
     private Timestamp to;
+
+    public Date getDate() {
+        return day;
+    }
+
+    public void setDate(Date day) {
+        this.day = day;
+    }
 
     /**
      * Получение номера контракта
