@@ -59,6 +59,7 @@ public class Antifraud extends GlobalScriptBase {
      * количество заблокированных абонентов
      */
     private int lok;
+    private ContractDao cd = new ContractDao(con, 0);
 
     @Override
     public void execute(Setup setup, ConnectionSet connectionSet) throws Exception {
@@ -94,151 +95,165 @@ public class Antifraud extends GlobalScriptBase {
             to = tmp;
         }
 
-        print("Начало выборки = " + from.getTime());
-        print("Конец выборки = " + to.getTime());
-        // Попытка подключения к БД
-        try {
-            con = connectionSet.getConnection();
-        } catch (Exception ex) {
-            //logger.error("Ошибка подключения к БД в скрипте Antifroud");
-            //logger.error(ex.getMessage(), ex);
-            throw new BGException("Ошибка подключения к БД в скрипте Antifroud\n" + ex.getMessage() + "\n" + ex);
-        }
-
-        // считывание данных об обработанных звонках за день
         HashMap<Integer, Traffic> traffic = new HashMap<>();
-        try {
-            traffic = getTraffic(from, to);
-        } catch (SQLException ex) {
-            // logger.error("Не удалось извлечь данные об обработанных звонках за день. Время начала извлечения " + from.toString() + "\n");
-            // logger.error(ex.getMessage(), ex);
-            throw new BGException("Не удалось извлечь данные об обработанных звонках за день.\n"
-                    + "Время начала извлечения " + from.toString() + "\n" + ex.getMessage() + "\n" + ex);
-        }
-
-        // Считывание необработанных звонков
         ArrayList<Calls> calls = new ArrayList<>();
-        try {
-            calls = getCalls(from, to);
-        } catch (SQLException e) {
-            //logger.error("Не удалось извлечь данные о звонках с " + from.toString() + " по " + to.toString() + "\n");
-            //logger.error(e.getMessage(), e);
-            throw new BGException("Не удалось извлечь данные о звонках с "
-                    + from.toString() + " по " + to.toString() + "\n" + e.getMessage() + "\n" + e);
-        }
-
-        print("Количество необработанных звонков = " + calls.size());
-        print("Количество данных трафика до обработки данных = " + traffic.size());
-
         Calls call; // данные звонка абонента
         Traffic tr; // текущий трафик абонента
-        ContractDao cd = new ContractDao(con, 0);
-        Contract contract = null;
+        
+        Contract contract;
         // информация о пользователях, которых нельзя блокировать
         ArrayList<Users> users = new ArrayList<>();
-        try {
-            users = getUsers();
-        } catch (SQLException ex) {
-            // logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
-            // logger.error(ex.getMessage(), ex);
-            throw new BGException("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n" + ex.getMessage() + "\n" + ex);
-        }
 
-        lok = 0;
+        Calendar start = (Calendar) from.clone();
+        Calendar end = (Calendar) from.clone();
+        end.add(Calendar.HOUR_OF_DAY, 1);   
+        int i;
+        
+        
+        while (end.before(to) || end.equals(to)) {
 
-        // определение превышения трафика
-        for (int i = 0; i < calls.size(); i++) {
-            print("№ необработанного звонка: " + (i + 1));
+            print("Начало выборки = " + start.getTime());
+            print("Конец выборки = " + end.getTime());
+            // Попытка подключения к БД
+            try {
+                con = connectionSet.getConnection();
+            } catch (Exception ex) {
+                //logger.error("Ошибка подключения к БД в скрипте Antifroud");
+                //logger.error(ex.getMessage(), ex);
+                throw new BGException("Ошибка подключения к БД в скрипте Antifroud\n" + ex.getMessage() + "\n" + ex);
+            }
 
-            // информация о необработанном звонке
-            call = calls.get(i);
+            // считывание данных об обработанных звонках за день
+            try {
+                traffic = getTraffic(start, end);
+            } catch (SQLException ex) {
+                // logger.error("Не удалось извлечь данные об обработанных звонках за день. Время начала извлечения " + from.toString() + "\n");
+                // logger.error(ex.getMessage(), ex);
+                throw new BGException("Не удалось извлечь данные об обработанных звонках за день.\n"
+                        + "Время начала извлечения " + start.toString() + "\n" + ex.getMessage() + "\n" + ex);
+            }
+
+            // Считывание необработанных звонков
+            try {
+                calls = getCalls(start, end);
+            } catch (SQLException e) {
+                //logger.error("Не удалось извлечь данные о звонках с " + from.toString() + " по " + to.toString() + "\n");
+                //logger.error(e.getMessage(), e);
+                throw new BGException("Не удалось извлечь данные о звонках с "
+                        + from.toString() + " по " + to.toString() + "\n" + e.getMessage() + "\n" + e);
+            }
+
+            print("Количество необработанных звонков = " + calls.size());
+            print("Количество данных трафика до обработки данных = " + traffic.size());
 
             try {
-                contract = cd.get(call.getContarct_id());
-                print("Номер договора = " + contract);
-
-            } catch (NullPointerException e) {
-                // logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id());
-                // logger.error(e.getMessage(), e);
-                throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
-            }
-            // получение данных о трафике абонента
-            tr = new Traffic(call.getContarct_id(), ToTimestamp(from), ToTimestamp(to), call.getDate());
-            print("Статус договора = " + tr.getStatus());
-
-            try {     // вычисление длительности разговора
-
-                switch (call.getCategories()) {
-                    case "1":
-                        tr.setInternational(tr.getInternational() + calls.get(i).getTime());
-                        break;
-                    case "2":
-                        tr.setIntercity(tr.getIntercity() + calls.get(i).getTime());
-                        break;
-                    case "3":
-                        tr.setInterzone(tr.getInterzone() + calls.get(i).getTime());
-                        break;
-                    default:
-                        throw new Exception("Неопознанный тип звонка");
-                }
-
-            } catch (Exception ex) {
-                //  logger.error("Не удалось распознать тип звонка. Полученный тип : " + call.getCategories() + "\n");
-                //  logger.error(ex.getMessage(), ex);
-                throw new BGException("Не удалось распознать тип звонка. Полученный тип: " + call.getCategories() + "\n" + ex.getMessage() + "\n" + ex);
+                users = getUsers();
+            } catch (SQLException ex) {
+                // logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
+                // logger.error(ex.getMessage(), ex);
+                throw new BGException("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n" + ex.getMessage() + "\n" + ex);
             }
 
-            // проверка на превышение трафик производится только для абонентов,
-            // не входящих в список исключений
-            if (!users.contains(call.getContarct_id())) {
+            lok = 0;
 
-                if (tr.getStatus() != 4) { // если абонент заблокирован,то не надо блокировать его снова
-                    print("Тип договора: " + contract.getPersonType());
-                    try {
-                        switch (contract.getPersonType()) {
-                            case 0:
-                                if (InZoneNatural(SumInterzone(tr)) || IntercityNatural(SumIntercity(tr)) || International(SumInternational(tr))) {
-                                    LockContract(call.getContarct_id());
-                                    tr.setStatus(4);
-                                    print("У контракта " + contract + " сменился статус на " + tr.getStatus());
-                                }
-                                break;
-                            case 1:
-                                if (InZoneLegal(SumInterzone(tr)) || IntercityLegal(SumIntercity(tr)) || International(SumInternational(tr))) {
-                                    LockContract(call.getContarct_id());
-                                    tr.setStatus(4);
-                                    print("У контракта " + contract + " сменился статус на " + tr.getStatus());
-                                }
-                                break;
-                            default:
-                                throw new Exception("Неопознанный тип договора");
-                        }
-                    } catch (SQLException e) {
-                        // logger.error("Не удалось занести данные в БД. Номер контракта: " + call.getContarct_id());
-                        // logger.error(ex.getMessage(), e);
-                        throw new BGException("Не удалось добавить данные в БД. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
-                    } catch (Exception ex) {
-                        // logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договра: " + contract.getPersonType());
-                        // logger.error(ex.getMessage(), ex);
-                        throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договора: " + contract.getPersonType() + "\n" + ex.getMessage() + "\n" + ex);
-                    }
-                }
+            // определение превышения трафика
+            for (i = 0; i < calls.size(); i++) {
+                print("№ необработанного звонка: " + (i + 1));
+
+                // информация о необработанном звонке
+                call = calls.get(i);                
+              
                 try {
-                    UpdateDataInTraffic(tr, from, to);
+                    contract = cd.get(call.getContarct_id());
+                    //print("Номер договора = " + contract);
 
-                    // если нет данных о звонках
-                    if (!traffic.containsKey(call.getContarct_id())) {
-                        traffic.put(tr.getContract_id(), tr);
-                    }
-                } catch (SQLException ex) {
-                    throw new BGException("Ошибка вставки данных о трафике абонента: " + call.getContarct_id() + "\n" + ex.getMessage() + "\n" + ex);
+                } catch (NullPointerException e) {
+                    // logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id());
+                    // logger.error(e.getMessage(), e);
+                    throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
                 }
-            }// if (users.contain...)
 
-        }// for
+                // получение данных о трафике абонента
+                tr = new Traffic(call.getContarct_id(), ToTimestamp(start), ToTimestamp(end), call.getDate());
+                print("Статус договора = " + tr.getStatus());
 
-        print("Количество данных трафика после обработки данных = " + traffic.size());
-        print("Количество заблокированных абонентов " + lok);
+                try {     // вычисление длительности разговора
+
+                    switch (call.getCategories()) {
+                        case "1":
+                            tr.setInternational(tr.getInternational() + calls.get(i).getTime());
+                            break;
+                        case "2":
+                            tr.setIntercity(tr.getIntercity() + calls.get(i).getTime());
+                            break;
+                        case "3":
+                            tr.setInterzone(tr.getInterzone() + calls.get(i).getTime());
+                            break;
+                        default:
+                            throw new Exception("Неопознанный тип звонка");
+                    }
+
+                } catch (Exception ex) {
+                    //  logger.error("Не удалось распознать тип звонка. Полученный тип : " + call.getCategories() + "\n");
+                    //  logger.error(ex.getMessage(), ex);
+                    throw new BGException("Не удалось распознать тип звонка. Полученный тип: " + call.getCategories() + "\n" + ex.getMessage() + "\n" + ex);
+                }
+
+                // проверка на превышение трафик производится только для абонентов,
+                // не входящих в список исключений
+                if (!users.contains(call.getContarct_id())) {
+
+                    if (tr.getStatus() != 4) { // если абонент заблокирован,то не надо блокировать его снова
+                        print("Тип договора: " + contract.getPersonType());
+                        try {
+                            switch (contract.getPersonType()) {
+                                case 0:
+                                    if (InZoneNatural(SumInterzone(tr)) || IntercityNatural(SumIntercity(tr)) || International(SumInternational(tr))) {
+                                        LockContract(call.getContarct_id());
+                                        tr.setStatus(4);
+                                        print("У контракта " + contract + " сменился статус на " + tr.getStatus());
+                                    }
+                                    break;
+                                case 1:
+                                    if (InZoneLegal(SumInterzone(tr)) || IntercityLegal(SumIntercity(tr)) || International(SumInternational(tr))) {
+                                        LockContract(call.getContarct_id());
+                                        tr.setStatus(4);
+                                        print("У контракта " + contract + " сменился статус на " + tr.getStatus());
+                                    }
+                                    break;
+                                default:
+                                    throw new Exception("Неопознанный тип договора");
+                            }
+                        } catch (SQLException e) {
+                            // logger.error("Не удалось занести данные в БД. Номер контракта: " + call.getContarct_id());
+                            // logger.error(ex.getMessage(), e);
+                            throw new BGException("Не удалось добавить данные в БД. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
+                        } catch (Exception ex) {
+                            // logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договра: " + contract.getPersonType());
+                            // logger.error(ex.getMessage(), ex);
+                            throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договора: " + contract.getPersonType() + "\n" + ex.getMessage() + "\n" + ex);
+                        }
+                    }
+                    try {
+                        UpdateDataInTraffic(tr, start, end);
+
+                        // если нет данных о звонках
+                        if (!traffic.containsKey(call.getContarct_id())) {
+                            traffic.put(tr.getContract_id(), tr);
+                        }
+                    } catch (SQLException ex) {
+                        throw new BGException("Ошибка вставки данных о трафике абонента: " + call.getContarct_id() + "\n" + ex.getMessage() + "\n" + ex);
+                    }
+                }// if (users.contain...)
+
+            }// for
+
+            print("Количество данных трафика после обработки данных = " + traffic.size());
+            print("Количество заблокированных абонентов " + lok);
+
+            start = (Calendar) end.clone();
+            end.add(Calendar.HOUR_OF_DAY, 1);
+        }
     }
 
     /**
