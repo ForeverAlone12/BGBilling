@@ -120,7 +120,7 @@ public class Antifraud extends GlobalScriptBase {
 
         ContractDao cd = new ContractDao(con, 0);
         Contract contract;
-        while (!end.before(to)) {
+        while (!end.after(to)) {
             print("Начало выборки = " + start.getTime());
             print("Конец выборки = " + end.getTime());
             // считывание данных об обработанных звонках за день
