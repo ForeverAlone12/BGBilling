@@ -59,7 +59,6 @@ public class Antifraud extends GlobalScriptBase {
      * количество заблокированных абонентов
      */
     private int lok;
-    private ContractDao cd = new ContractDao(con, 0);
 
     @Override
     public void execute(Setup setup, ConnectionSet connectionSet) throws Exception {
@@ -99,35 +98,35 @@ public class Antifraud extends GlobalScriptBase {
         ArrayList<Calls> calls = new ArrayList<>();
         Calls call; // данные звонка абонента
         Traffic tr; // текущий трафик абонента
-        
-        Contract contract;
+
         // информация о пользователях, которых нельзя блокировать
         ArrayList<Users> users = new ArrayList<>();
 
         Calendar start = (Calendar) from.clone();
         Calendar end = (Calendar) from.clone();
-        end.add(Calendar.HOUR_OF_DAY, 1);   
-        int i;
-        
-        
-        while (end.before(to) || end.equals(to)) {
+        end.add(Calendar.HOUR_OF_DAY, 1);
 
+        int i;
+
+        // Попытка подключения к БД
+        try {
+            con = connectionSet.getConnection();
+        } catch (Exception ex) {
+            //logger.error("Ошибка подключения к БД в скрипте Antifroud");
+            //logger.error(ex.getMessage(), ex);
+            throw new BGException("Ошибка подключения к БД в скрипте Antifroud\n" + ex.getMessage() + "\n" + ex);
+        }
+
+        ContractDao cd = new ContractDao(con, 0);
+        Contract contract;
+        while (end.before(to) || end.equals(to)) {
             print("Начало выборки = " + start.getTime());
             print("Конец выборки = " + end.getTime());
-            // Попытка подключения к БД
-            try {
-                con = connectionSet.getConnection();
-            } catch (Exception ex) {
-                //logger.error("Ошибка подключения к БД в скрипте Antifroud");
-                //logger.error(ex.getMessage(), ex);
-                throw new BGException("Ошибка подключения к БД в скрипте Antifroud\n" + ex.getMessage() + "\n" + ex);
-            }
-
             // считывание данных об обработанных звонках за день
             try {
                 traffic = getTraffic(start, end);
             } catch (SQLException ex) {
-                // logger.error("Не удалось извлечь данные об обработанных звонках за день. Время начала извлечения " + from.toString() + "\n");
+                // logger.error("Не удалось извлечь данные об обработанных звонках за день. Время начала извлечения " + start.toString() + "\n");
                 // logger.error(ex.getMessage(), ex);
                 throw new BGException("Не удалось извлечь данные об обработанных звонках за день.\n"
                         + "Время начала извлечения " + start.toString() + "\n" + ex.getMessage() + "\n" + ex);
@@ -137,10 +136,10 @@ public class Antifraud extends GlobalScriptBase {
             try {
                 calls = getCalls(start, end);
             } catch (SQLException e) {
-                //logger.error("Не удалось извлечь данные о звонках с " + from.toString() + " по " + to.toString() + "\n");
+                //logger.error("Не удалось извлечь данные о звонках с " + start.toString() + " по " + end.toString() + "\n");
                 //logger.error(e.getMessage(), e);
                 throw new BGException("Не удалось извлечь данные о звонках с "
-                        + from.toString() + " по " + to.toString() + "\n" + e.getMessage() + "\n" + e);
+                        + start.toString() + " по " + end.toString() + "\n" + e.getMessage() + "\n" + e);
             }
 
             print("Количество необработанных звонков = " + calls.size());
@@ -161,8 +160,8 @@ public class Antifraud extends GlobalScriptBase {
                 print("№ необработанного звонка: " + (i + 1));
 
                 // информация о необработанном звонке
-                call = calls.get(i);                
-              
+                call = calls.get(i);
+
                 try {
                     contract = cd.get(call.getContarct_id());
                     //print("Номер договора = " + contract);
