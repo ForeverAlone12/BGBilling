@@ -58,7 +58,7 @@ public class Antifraud extends GlobalScriptBase {
     /**
      * количество заблокированных абонентов
      */
-    private int lok;
+    private int lock;
 
     @Override
     public void execute(Setup setup, ConnectionSet connectionSet) throws Exception {
@@ -153,7 +153,7 @@ public class Antifraud extends GlobalScriptBase {
                 throw new BGException("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n" + ex.getMessage() + "\n" + ex);
             }
 
-            lok = 0;
+            lock = 0;
 
             // определение превышения трафика
             for (i = 0; i < calls.size(); i++) {
@@ -255,7 +255,7 @@ public class Antifraud extends GlobalScriptBase {
             }// for
 
             print("Количество данных трафика после обработки данных = " + traffic.size());
-            print("Количество заблокированных абонентов " + lok);
+            print("Количество заблокированных абонентов " + lock);
 
             start = (Calendar) end.clone();
             end.add(Calendar.HOUR_OF_DAY, 1);
@@ -450,7 +450,7 @@ public class Antifraud extends GlobalScriptBase {
         con.commit();
 
         print("Контракт " + contract + " заблокирован!!!");
-        lok++;
+        lock++;
 
     }
 

@@ -36,6 +36,7 @@ public class LockLegalUsers extends GlobalScriptBase {
             throw new BGException("Ошибка подключения к БД в скрипте LockLegalUser\n" + ex.getMessage() + "\n" + ex);
         }
 
+        int lock = 0; // количество заблокированных абонентов
         try {
             String query = "Select c.`id`, c.`fc` \n"
                     + "FROM contract c \n"
@@ -50,9 +51,9 @@ public class LockLegalUsers extends GlobalScriptBase {
 
             ContractDao cd = new ContractDao(con, 0);
             Contract c = null;
-            
-            con.setAutoCommit(false);
 
+            con.setAutoCommit(false);
+            
             while (rs.next()) {
                 // блокировка юридических лиц
                 c = cd.get(rs.getInt("id"));
@@ -67,6 +68,7 @@ public class LockLegalUsers extends GlobalScriptBase {
                     ps.setInt(1, 1);
                     ps.setInt(2, rs.getInt("id"));
                     ps.executeUpdate();
+                    lock++;
 
                 } catch (SQLException ex) {
                     //logger.error("Не удалось внести данные о заблокированных абонентах\n");
@@ -84,6 +86,7 @@ public class LockLegalUsers extends GlobalScriptBase {
             //logger.error(ex.getMessage(), ex);
             throw new BGException("Ошибка выборки юридического лица для блокировки\n" + ex.getMessage() + "\n" + ex);
         }
+        print("Количество заблокированных юр лиц на ночь = " + lock);
     }
 
 }

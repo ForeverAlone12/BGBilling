@@ -25,12 +25,6 @@ public class UnlockUser extends GlobalScriptBase {
         // обработчик ошибок
         Logger logger = Logger.getLogger(this.getClass());
 
-        // определение текущего времени
-        Calendar now = Calendar.getInstance();
-
-        Calendar lastDay = (Calendar) now.clone();
-        lastDay.add(Calendar.DAY_OF_MONTH, -1);
-
         // подключение к БД
         Connection con = null;
         try {
@@ -45,7 +39,7 @@ public class UnlockUser extends GlobalScriptBase {
         Contract c = null;
 
         con.setAutoCommit(false);
-
+        int unlock = 0;
         try {
             String query = "Select `id`, `fc`, `cid` \n"
                     + "FROM lockabonent \n"
@@ -61,6 +55,7 @@ public class UnlockUser extends GlobalScriptBase {
                     query = "DELETE FROM lockabonent  WHERE `fc`=" + rs.getInt("fc");
                     ps = con.prepareStatement(query);
                     ps.executeUpdate();
+                    unlock++;
                 }
 
                 con.commit();
@@ -79,7 +74,7 @@ public class UnlockUser extends GlobalScriptBase {
             //logger.error(ex.getMessage(), ex);
             throw new BGException("Ошибка извлечения данных о заблокировнных абонентов\n" + ex.getMessage() + "\n" + ex);
         }
-
+        print("Количество разблокированных физ лиц = " + unlock);
     }
 
 }
