@@ -93,7 +93,6 @@ public class Antifraud extends GlobalScriptBase {
             from = to;
             to = tmp;
         }
-        
 
         HashMap<Integer, Traffic> traffic = new HashMap<>();
         ArrayList<Calls> calls = new ArrayList<>();
@@ -180,13 +179,16 @@ public class Antifraud extends GlobalScriptBase {
                 try {     // вычисление длительности разговора
                     switch (call.getCategories()) {
                         case "1":
-                            tr.setInternational(tr.getInternational() + call.getTime());
+                            print("Международный звонок: " + call.getTime());
+                            tr.setInternational(call.getTime());
                             break;
                         case "2":
-                            tr.setIntercity(tr.getIntercity() + call.getTime());
+                            print("Междугородний звонок: " + call.getTime());
+                            tr.setIntercity(call.getTime());
                             break;
                         case "3":
-                            tr.setInterzone(tr.getInterzone() + call.getTime());
+                            print("Внутризоновый звонок: " + call.getTime());
+                            tr.setInterzone(call.getTime());
                             break;
                         default:
                             throw new Exception("Неопознанный тип звонка");
@@ -234,9 +236,9 @@ public class Antifraud extends GlobalScriptBase {
                         }
                     }
                     try {
-                        UpdateDataInTraffic(tr, start, end);                        
+                        UpdateDataInTraffic(tr, start, end);
                         traffic.put(tr.getContract_id(), tr);
-                     
+
                     } catch (SQLException ex) {
                         throw new BGException("Ошибка вставки данных о трафике абонента: " + call.getContarct_id() + "\n" + ex.getMessage() + "\n" + ex);
                     }
