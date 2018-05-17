@@ -67,7 +67,7 @@ public class Antifraud extends GlobalScriptBase {
         //Logger logger = Logger.getLogger(this.getClass());
         conSet = connectionSet;
 
-        ParameterMap setting = setup.sub("ru.dsi.fraud.");
+        ParameterMap setting = setup.sub("ru.dsi.bgbilling.modules.phone.antifraud.");
         limitSecondsNaturalZone = setting.getInt("LIMIT_SECONDS_NATURAL_ZONE", 12000);
         limitSecondsLegalZone = setting.getInt("LIMIT_SECONDS_LEGAL_ZONE", 60000);
         limitSecondsNaturalIntercity = setting.getInt("LIMIT_SECONDS_NATURAL_INTERCITY", 12000);
