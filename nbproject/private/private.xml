@@ -5,6 +5,7 @@
         <group>
             <file>file:/C:/Antifraud/BGBilling/src/ru/dsi/bgbilling/modules/phone/antifraud/Antifraud.java</file>
             <file>file:/C:/Antifraud/BGBilling/src/ru/dsi/bgbilling/modules/phone/antifraud/Traffic.java</file>
+            <file>file:/C:/Antifraud/BGBilling/src/ru/dsi/bgbilling/modules/phone/antifraud/Calls.java</file>
             <file>file:/C:/Antifraud/BGBilling/src/tables/isIrkMobile.sql</file>
             <file>file:/C:/Antifraud/BGBilling/src/tables/traffic.sql</file>
         </group>

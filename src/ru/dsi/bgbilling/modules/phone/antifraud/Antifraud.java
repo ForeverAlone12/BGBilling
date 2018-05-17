@@ -178,16 +178,15 @@ public class Antifraud extends GlobalScriptBase {
                 print("Статус договора = " + tr.getStatus());
 
                 try {     // вычисление длительности разговора
-
                     switch (call.getCategories()) {
                         case "1":
-                            tr.setInternational(tr.getInternational() + calls.get(i).getTime());
+                            tr.setInternational(tr.getInternational() + call.getTime());
                             break;
                         case "2":
-                            tr.setIntercity(tr.getIntercity() + calls.get(i).getTime());
+                            tr.setIntercity(tr.getIntercity() + call.getTime());
                             break;
                         case "3":
-                            tr.setInterzone(tr.getInterzone() + calls.get(i).getTime());
+                            tr.setInterzone(tr.getInterzone() + call.getTime());
                             break;
                         default:
                             throw new Exception("Неопознанный тип звонка");
