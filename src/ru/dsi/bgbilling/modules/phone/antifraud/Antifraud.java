@@ -164,7 +164,7 @@ public class Antifraud extends GlobalScriptBase {
 
                 try {
                     contract = cd.get(call.getContarct_id());
-                    //print("Номер договора = " + contract);
+                    print("Номер договора = " + contract);
 
                 } catch (NullPointerException e) {
                     // logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id());
@@ -193,11 +193,16 @@ public class Antifraud extends GlobalScriptBase {
                         default:
                             throw new Exception("Неопознанный тип звонка");
                     }
-
                 } catch (Exception ex) {
                     //  logger.error("Не удалось распознать тип звонка. Полученный тип : " + call.getCategories() + "\n");
                     //  logger.error(ex.getMessage(), ex);
                     throw new BGException("Не удалось распознать тип звонка. Полученный тип: " + call.getCategories() + "\n" + ex.getMessage() + "\n" + ex);
+                }
+
+                try {
+                    UpdateDataInTraffic(tr, start, end);
+                } catch (SQLException ex) {
+                    throw new BGException("Ошибка вставки данных о трафике абонента: " + call.getContarct_id() + "\n" + ex.getMessage() + "\n" + ex);
                 }
 
                 // проверка на превышение трафик производится только для абонентов,
@@ -216,6 +221,9 @@ public class Antifraud extends GlobalScriptBase {
                                     }
                                     break;
                                 case 1:
+                                    print("InZoneLegal: " + InZoneLegal(SumInterzone(tr)));
+                                    print("IntercityLegal: " + IntercityLegal(SumIntercity(tr)));
+                                    print("International: " + International(SumInternational(tr)));
                                     if (InZoneLegal(SumInterzone(tr)) || IntercityLegal(SumIntercity(tr)) || International(SumInternational(tr))) {
                                         LockContract(call.getContarct_id());
                                         tr.setStatus(4);
