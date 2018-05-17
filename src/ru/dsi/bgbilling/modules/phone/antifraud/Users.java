@@ -8,28 +8,21 @@ package ru.dsi.bgbilling.modules.phone.antifraud;
 public class Users {
 
     /**
-     * идентификатор записи
-     */
-    private int id;
-
-    /**
-     * номер контракта
+     * номер договора
      */
     private int cid;
 
-    Users(int id, int cid) {
-        this.id = id;
+    private int international;
+
+    private int intercity;
+
+    private int interzone;
+
+    Users(int cid) {
         this.cid = cid;
     }
 
-    /**
-     * Получение идентификатора записи
-     *
-     * @return идентификатор записи
-     */
-    public int getId() {
-        return id;
-    }
+ 
 
     /**
      * Получение номера контракта
@@ -39,5 +32,5 @@ public class Users {
     public int getCid() {
         return cid;
     }
-    
+
 }

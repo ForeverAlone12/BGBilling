@@ -44,7 +44,7 @@ public class Antifraud extends GlobalScriptBase {
      * Лимит времени по междугородней связи для абонентов - юридических лиц
      */
     private int limitSecondsLegalIntercity;
- 
+
     /**
      * Лимит времени по международной связи
      */
@@ -353,12 +353,18 @@ public class Antifraud extends GlobalScriptBase {
      */
     private ArrayList<Users> getUsers() throws SQLException {
         ArrayList<Users> users = new ArrayList<>();
-        String query = "SELECT `id`, `cid` \n"
-                + "FROM exception";
+        String query = "SELECT o.`cid`, op.`title`, ot.`value`\n"
+                + "FROM object o \n"
+                + "LEFT JOIN object_param_value_text ot ON o.`id`=ot.`object_id`\n"
+                + "LEFT JOIN object_param op ON ot.`param_id`=op.`id`\n"
+                + "WHERE (o.date1 IS NULL OR o.`date1`<=curdate()) AND (o.`date2` IS NULL OR o.`date2`>=curdate())\n"
+                + "AND o.`type_id`=1\n"
+                + "ORDER BY o.`cid`, ot.`param_id`";
         try (PreparedStatement ps = con.prepareStatement(query);
                 ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                users.add(new Users(rs.getInt("id"), rs.getInt("cid")));
+                rs.getInt("cid");
+               // users.add(new Users(rs.getInt("id"), rs.getInt("cid")));
             }
         } catch (SQLException ex) {
             throw new SQLException();
