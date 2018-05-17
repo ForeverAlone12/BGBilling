@@ -44,7 +44,7 @@ public class Antifraud extends GlobalScriptBase {
      * Лимит времени по междугородней связи для абонентов - юридических лиц
      */
     private int limitSecondsLegalIntercity;
-
+ 
     /**
      * Лимит времени по международной связи
      */
