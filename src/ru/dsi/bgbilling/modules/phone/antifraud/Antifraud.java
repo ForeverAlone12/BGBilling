@@ -128,6 +128,7 @@ public class Antifraud extends GlobalScriptBase {
 
         ContractDao cd = new ContractDao(con, 0);
         Contract contract;
+        int def;
         while (!end.after(to)) {
             print("Начало выборки = " + start.getTime());
             print("Конец выборки = " + end.getTime());
@@ -206,49 +207,72 @@ public class Antifraud extends GlobalScriptBase {
                     throw new BGException("Ошибка вставки данных о трафике абонента: " + call.getContarct_id() + "\n" + ex.getMessage() + "\n" + ex);
                 }
 
+                def = 0;
                 // проверка на превышение трафик производится только для абонентов,
                 // не входящих в список исключений
-                if (!users.containsKey(call.getContarct_id())) {
+                if (users.containsKey(call.getContarct_id())) {
+                    def = 1;
+                }
 
-                    if (tr.getStatus() != 4) { // если абонент заблокирован,то не надо блокировать его снова
-                        print("Тип договора: " + contract.getPersonType());
-                        try {
-                            switch (contract.getPersonType()) {
-                                case 0:
+                if (tr.getStatus() != 4) { // если абонент заблокирован,то не надо блокировать его снова
+                    print("Тип договора: " + contract.getPersonType());
+                    try {
+                        switch (contract.getPersonType()) {
+                            case 0:
+                                if (def == 0) {
                                     if (InZoneNatural(SumInterzone(tr)) || IntercityNatural(SumIntercity(tr)) || International(SumInternational(tr))) {
                                         LockContract(call.getContarct_id());
                                         tr.setStatus(4);
                                         print("У контракта " + contract + " сменился статус на " + tr.getStatus());
                                     }
-                                    break;
-                                case 1:
+                                } else {
+                                    if (InZoneNatural(SumInterzone(tr), users.get(call.getContarct_id()).getInterzone())
+                                            || IntercityNatural(SumIntercity(tr), users.get(call.getContarct_id()).getIntercity())
+                                            || International(SumInternational(tr), users.get(call.getContarct_id()).getInternational())) {
+                                        LockContract(call.getContarct_id());
+                                        tr.setStatus(4);
+                                        print("У контракта " + contract + " сменился статус на " + tr.getStatus());
+                                    }
+                                }
+                                break;
+                            case 1:
+                                if (def == 0) {
                                     if (InZoneLegal(SumInterzone(tr)) || IntercityLegal(SumIntercity(tr)) || International(SumInternational(tr))) {
                                         LockContract(call.getContarct_id());
                                         tr.setStatus(4);
                                         print("У контракта " + contract + " сменился статус на " + tr.getStatus());
                                     }
-                                    break;
-                                default:
-                                    throw new Exception("Неопознанный тип договора");
-                            }
-                        } catch (SQLException e) {
-                            // logger.error("Не удалось занести данные в БД. Номер контракта: " + call.getContarct_id());
-                            // logger.error(ex.getMessage(), e);
-                            throw new BGException("Не удалось добавить данные в БД. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
-                        } catch (Exception ex) {
-                            // logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договра: " + contract.getPersonType());
-                            // logger.error(ex.getMessage(), ex);
-                            throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договора: " + contract.getPersonType() + "\n" + ex.getMessage() + "\n" + ex);
+                                } else {
+                                    if (InZoneLegal(SumInterzone(tr), users.get(call.getContarct_id()).getInterzone())
+                                            || IntercityLegal(SumIntercity(tr), users.get(call.getContarct_id()).getIntercity())
+                                            || International(SumInternational(tr), users.get(call.getContarct_id()).getInternational())) {
+                                        LockContract(call.getContarct_id());
+                                        tr.setStatus(4);
+                                        print("У контракта " + contract + " сменился статус на " + tr.getStatus());
+                                    }
+                                }
+                                break;
+                            default:
+                                throw new Exception("Неопознанный тип договора");
                         }
+                    } catch (SQLException e) {
+                        // logger.error("Не удалось занести данные в БД. Номер контракта: " + call.getContarct_id());
+                        // logger.error(ex.getMessage(), e);
+                        throw new BGException("Не удалось добавить данные в БД. Номер контракта: " + call.getContarct_id() + "\n" + e.getMessage() + "\n" + e);
+                    } catch (Exception ex) {
+                        // logger.error("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договра: " + contract.getPersonType());
+                        // logger.error(ex.getMessage(), ex);
+                        throw new BGException("Не удалось распознать договор. Номер контракта: " + call.getContarct_id() + ". Полученный тип договора: " + contract.getPersonType() + "\n" + ex.getMessage() + "\n" + ex);
                     }
-                    try {
-                        UpdateDataInTraffic(tr, start, end);
-                        traffic.put(tr.getContract_id(), tr);
+                }
+                try {
+                    UpdateDataInTraffic(tr, start, end);
+                    traffic.put(tr.getContract_id(), tr);
 
-                    } catch (SQLException ex) {
-                        throw new BGException("Ошибка вставки данных о трафике абонента: " + call.getContarct_id() + "\n" + ex.getMessage() + "\n" + ex);
-                    }
-                }// if (users.contain...)
+                } catch (SQLException ex) {
+                    throw new BGException("Ошибка вставки данных о трафике абонента: " + call.getContarct_id() + "\n" + ex.getMessage() + "\n" + ex);
+                }
+                //}// if (users.contain...)
 
             }// for
 
@@ -534,6 +558,60 @@ public class Antifraud extends GlobalScriptBase {
      */
     private boolean International(int session) {
         return session > limitSecondsInternational;
+    }
+
+    /**
+     * Превышен ли лимит по внутризоновым телефонным соединениям для физических
+     * лиц
+     *
+     * @param session количество выговоренных секунд
+     * @return true - лимит превышен, false - лимит не превышен
+     */
+    private boolean InZoneNatural(int session, int limit) {
+        return session > limit;
+    }
+
+    /**
+     * Превышен ли лимит по внутризоновым телефонным соединениям для юридических
+     * лиц
+     *
+     * @param session количество выговоренных секунд
+     * @return true - лимит превышен, false - лимит не превышен
+     */
+    private boolean InZoneLegal(int session, int limit) {
+        return session > limit;
+    }
+
+    /**
+     * Превышен ли лимит по межгородним телефонным соединениям для физических
+     * лиц
+     *
+     * @param session количество выговоренных секунд
+     * @return true - лимит превышен, false - лимит не превышен
+     */
+    private boolean IntercityNatural(int session, int limit) {
+        return session > limit;
+    }
+
+    /**
+     * Превышен ли лимит по межгородним телефонным соединениям для юридических
+     * лиц
+     *
+     * @param session количество выговоренных секунд
+     * @return true - лимит превышен, false - лимит не превышен
+     */
+    private boolean IntercityLegal(int session, int limit) {
+        return session > limit;
+    }
+
+    /**
+     * Превышен ли лимит по международным телефонным соединениям
+     *
+     * @param session количество выговоренных секунд
+     * @return true - лимит превышен, false - лимит не превышен
+     */
+    private boolean International(int session, int limit) {
+        return session > limit;
     }
 
     /**
