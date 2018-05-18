@@ -100,7 +100,7 @@ public class Antifraud extends GlobalScriptBase {
         Traffic tr; // текущий трафик абонента
 
         // информация о пользователях, которых нельзя блокировать
-        ArrayList<Users> users = new ArrayList<>();
+        HashMap<Integer, Users> users = new HashMap<>();
 
         Calendar start = (Calendar) from.clone();
         Calendar end = (Calendar) from.clone();
@@ -115,6 +115,15 @@ public class Antifraud extends GlobalScriptBase {
             //logger.error("Ошибка подключения к БД в скрипте Antifroud");
             //logger.error(ex.getMessage(), ex);
             throw new BGException("Ошибка подключения к БД в скрипте Antifroud\n" + ex.getMessage() + "\n" + ex);
+        }
+        try {
+            users = getUsers();
+            print("Количество пользователей с объектами: " + users.size());
+
+        } catch (SQLException ex) {
+            // logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
+            // logger.error(ex.getMessage(), ex);
+            throw new BGException("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n" + ex.getMessage() + "\n" + ex);
         }
 
         ContractDao cd = new ContractDao(con, 0);
@@ -144,14 +153,6 @@ public class Antifraud extends GlobalScriptBase {
 
             print("Количество необработанных звонков = " + calls.size());
             print("Количество данных трафика до обработки данных = " + traffic.size());
-
-            try {
-                users = getUsers();
-            } catch (SQLException ex) {
-                // logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
-                // logger.error(ex.getMessage(), ex);
-                throw new BGException("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n" + ex.getMessage() + "\n" + ex);
-            }
 
             lock = 0;
 
@@ -207,7 +208,7 @@ public class Antifraud extends GlobalScriptBase {
 
                 // проверка на превышение трафик производится только для абонентов,
                 // не входящих в список исключений
-                if (!users.contains(call.getContarct_id())) {
+                if (!users.containsKey(call.getContarct_id())) {
 
                     if (tr.getStatus() != 4) { // если абонент заблокирован,то не надо блокировать его снова
                         print("Тип договора: " + contract.getPersonType());
@@ -221,9 +222,6 @@ public class Antifraud extends GlobalScriptBase {
                                     }
                                     break;
                                 case 1:
-                                    print("InZoneLegal: " + InZoneLegal(SumInterzone(tr)));
-                                    print("IntercityLegal: " + IntercityLegal(SumIntercity(tr)));
-                                    print("International: " + International(SumInternational(tr)));
                                     if (InZoneLegal(SumInterzone(tr)) || IntercityLegal(SumIntercity(tr)) || International(SumInternational(tr))) {
                                         LockContract(call.getContarct_id());
                                         tr.setStatus(4);
@@ -351,8 +349,11 @@ public class Antifraud extends GlobalScriptBase {
      * @return список пользователей, которых нельзя блокировать
      * @throws SQLException
      */
-    private ArrayList<Users> getUsers() throws SQLException {
-        ArrayList<Users> users = new ArrayList<>();
+    private HashMap<Integer, Users> getUsers() throws Exception {
+
+        ArrayList<ParamValue> value = new ArrayList<>();
+        HashMap<Integer, Users> us = new HashMap<>();
+
         String query = "SELECT o.`cid`, op.`title`, ot.`value`\n"
                 + "FROM object o \n"
                 + "LEFT JOIN object_param_value_text ot ON o.`id`=ot.`object_id`\n"
@@ -363,13 +364,34 @@ public class Antifraud extends GlobalScriptBase {
         try (PreparedStatement ps = con.prepareStatement(query);
                 ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                rs.getInt("cid");
-               // users.add(new Users(rs.getInt("id"), rs.getInt("cid")));
+                value.add(new ParamValue(rs.getInt("cid"), rs.getString("title"), rs.getInt("value")));
             }
         } catch (SQLException ex) {
             throw new SQLException();
         }
-        return users;
+
+        String time_interzone = "Время внутризоновой связи";
+        String time_intercity = "Время междугородней связи";
+        String time_international = "Время международной связи";
+
+        int ind = -1;
+        Users u = new Users();
+        for (ParamValue v : value) {
+            if (v.getTitle().equals(time_interzone)) {
+                u.setInterzone(v.getValue());
+            }
+            if (v.getTitle().equals(time_intercity)) {
+                u.setIntercity(v.getValue());
+            }
+            if (v.getTitle().equals(time_international)) {
+                u.setInternational(v.getValue());
+            }
+
+            us.putIfAbsent(v.getCid(), u);
+
+        }
+
+        return us;
 
     }
 
