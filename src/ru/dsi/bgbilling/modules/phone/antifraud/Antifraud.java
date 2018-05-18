@@ -44,7 +44,7 @@ public class Antifraud extends GlobalScriptBase {
      * Лимит времени по междугородней связи для абонентов - юридических лиц
      */
     private int limitSecondsLegalIntercity;
- 
+
     /**
      * Лимит времени по международной связи
      */
@@ -221,9 +221,6 @@ public class Antifraud extends GlobalScriptBase {
                                     }
                                     break;
                                 case 1:
-                                    print("InZoneLegal: " + InZoneLegal(SumInterzone(tr)));
-                                    print("IntercityLegal: " + IntercityLegal(SumIntercity(tr)));
-                                    print("International: " + International(SumInternational(tr)));
                                     if (InZoneLegal(SumInterzone(tr)) || IntercityLegal(SumIntercity(tr)) || International(SumInternational(tr))) {
                                         LockContract(call.getContarct_id());
                                         tr.setStatus(4);
