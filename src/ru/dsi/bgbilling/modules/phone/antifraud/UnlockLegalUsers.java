@@ -33,7 +33,7 @@ public class UnlockLegalUsers extends GlobalScriptBase {
             //logger.error(ex.getMessage(), ex);
             throw new BGException("Ошибка подключения к БД в скрипте UnlockLegalUser\n" + ex.getMessage() + "\n" + ex);
         }
-
+        int unlock = 0;
         try {
             String query = "Select `id`, `fc`, `cid` \n"
                     + "FROM lockabonent \n"
@@ -43,7 +43,7 @@ public class UnlockLegalUsers extends GlobalScriptBase {
 
             ContractDao cd = new ContractDao(con, 0);
             Contract c = null;
-            
+
             con.setAutoCommit(false);
 
             try {
@@ -53,10 +53,10 @@ public class UnlockLegalUsers extends GlobalScriptBase {
                     c.setStatus((byte) 0);
                     cd.update(c);
 
-                    query = "DELETE FROM lockabonent  WHERE `fc`=" + rs.getInt("fc");
+                    query = "DELETE FROM lockabonent WHERE `fc`=" + rs.getInt("fc");
                     ps = con.prepareStatement(query);
                     ps.executeUpdate();
-
+                    unlock++;
                 }
                 con.commit();
             } catch (SQLException ex) {
@@ -73,7 +73,7 @@ public class UnlockLegalUsers extends GlobalScriptBase {
             //logger.error(ex.getMessage(), ex);
             throw new BGException("Ошибка выборки юридического лица для снятия блокировки\n" + ex.getMessage() + "\n" + ex);
         }
-
+        print("Количество разблокированных юр лиц утром = " + unlock);
     }
 
 }
