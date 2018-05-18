@@ -56,9 +56,27 @@ public class Antifraud extends GlobalScriptBase {
     private int codeTelephoneNumb;
 
     /**
-     * количество заблокированных абонентов
+     * Код объекта с настройками антифрода
+     */
+    private int codeObject;
+    /**
+     * Количество заблокированных абонентов
      */
     private int lock;
+
+    /**
+     * Название параметра объекта, определяющего трафик по внутризоновой связи
+     */
+    private String interzone;
+
+    /**
+     * Название параметра объекта, определяющего трафик по междугородней связи
+     */
+    private String intercity;
+    /**
+     * Название параметра объекта, определяющего трафик по международной связи
+     */
+    private String international;
 
     @Override
     public void execute(Setup setup, ConnectionSet connectionSet) throws Exception {
@@ -74,6 +92,10 @@ public class Antifraud extends GlobalScriptBase {
         limitSecondsLegalIntercity = setting.getInt("LIMIT_SECONDS_LEGAL_INTERCITY", 60000);
         limitSecondsInternational = setting.getInt("LIMIT_SECONDS_INTERNATIONAL", 7200);
         codeTelephoneNumb = setting.getInt("codeTelephone", 6);
+        codeObject = setting.getInt("codeObject", 1);
+        interzone = setting.get("interzone", "Время внутризоновой связи");
+        intercity = setting.get("intercity", "Время междугородней связи");
+        international = setting.get("international", "Время международной связи");
 
         int recordate = setting.getInt("recordate", 0);
 
@@ -226,6 +248,7 @@ public class Antifraud extends GlobalScriptBase {
                                         print("У контракта " + contract + " сменился статус на " + tr.getStatus());
                                     }
                                 } else {
+                                    isExist(users, call.getContarct_id(), contract.getPersonType());
                                     if (InZoneNatural(SumInterzone(tr), users.get(call.getContarct_id()).getInterzone())
                                             || IntercityNatural(SumIntercity(tr), users.get(call.getContarct_id()).getIntercity())
                                             || International(SumInternational(tr), users.get(call.getContarct_id()).getInternational())) {
@@ -243,6 +266,7 @@ public class Antifraud extends GlobalScriptBase {
                                         print("У контракта " + contract + " сменился статус на " + tr.getStatus());
                                     }
                                 } else {
+                                    isExist(users, call.getContarct_id(), contract.getPersonType());
                                     if (InZoneLegal(SumInterzone(tr), users.get(call.getContarct_id()).getInterzone())
                                             || IntercityLegal(SumIntercity(tr), users.get(call.getContarct_id()).getIntercity())
                                             || International(SumInternational(tr), users.get(call.getContarct_id()).getInternational())) {
@@ -281,6 +305,28 @@ public class Antifraud extends GlobalScriptBase {
 
             start = (Calendar) end.clone();
             end.add(Calendar.HOUR_OF_DAY, 1);
+        }
+    }
+
+    private void isExist(HashMap<Integer, Users> user, int cid, int type) {
+        if (user.get(cid).getInterzone() == 0) {
+            if (type == 1) {
+                user.get(cid).setInterzone(limitSecondsLegalZone);
+            } else {
+                user.get(cid).setInterzone(limitSecondsNaturalZone);
+            }
+        }
+
+        if (user.get(cid).getIntercity() == 0) {
+            if (type == 1) {
+                user.get(cid).setInterzone(limitSecondsLegalIntercity);
+            } else {
+                user.get(cid).setInterzone(limitSecondsNaturalIntercity);
+            }
+        }
+
+        if (user.get(cid).getInternational() == 0) {
+            user.get(cid).setInterzone(limitSecondsInternational);
         }
     }
 
@@ -380,39 +426,34 @@ public class Antifraud extends GlobalScriptBase {
 
         String query = "SELECT o.`cid`, op.`title`, ot.`value`\n"
                 + "FROM object o \n"
-                + "LEFT JOIN object_param_value_text ot ON o.`id`=ot.`object_id`\n"
-                + "LEFT JOIN object_param op ON ot.`param_id`=op.`id`\n"
-                + "WHERE (o.date1 IS NULL OR o.`date1`<=curdate()) AND (o.`date2` IS NULL OR o.`date2`>=curdate())\n"
-                + "AND o.`type_id`=1\n"
+                + "LEFT JOIN object_param_value_text ot ON o.`id`=ot.`object_id` \n"
+                + "LEFT JOIN object_param op ON ot.`param_id`=op.`id` \n"
+                + "WHERE (o.date1 IS NULL OR o.`date1`<=curdate()) AND (o.`date2` IS NULL OR o.`date2`>=curdate()) \n"
+                + "AND o.`type_id`=? \n"
                 + "ORDER BY o.`cid`, ot.`param_id`";
-        try (PreparedStatement ps = con.prepareStatement(query);
-                ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                value.add(new ParamValue(rs.getInt("cid"), rs.getString("title"), rs.getInt("value")));
+        try (PreparedStatement ps = con.prepareStatement(query)) {
+            ps.setInt(1, codeObject);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    value.add(new ParamValue(rs.getInt("cid"), rs.getString("title"), rs.getInt("value")));
+                }
+            } catch (SQLException ex) {
+                throw new SQLException();
             }
-        } catch (SQLException ex) {
-            throw new SQLException();
         }
 
-        String time_interzone = "Время внутризоновой связи";
-        String time_intercity = "Время междугородней связи";
-        String time_international = "Время международной связи";
-
-        int ind = -1;
         Users u = new Users();
         for (ParamValue v : value) {
-            if (v.getTitle().equals(time_interzone)) {
+            if (v.getTitle().equals(interzone)) {
                 u.setInterzone(v.getValue());
             }
-            if (v.getTitle().equals(time_intercity)) {
+            if (v.getTitle().equals(intercity)) {
                 u.setIntercity(v.getValue());
             }
-            if (v.getTitle().equals(time_international)) {
+            if (v.getTitle().equals(international)) {
                 u.setInternational(v.getValue());
             }
-
             us.putIfAbsent(v.getCid(), u);
-
         }
 
         return us;
