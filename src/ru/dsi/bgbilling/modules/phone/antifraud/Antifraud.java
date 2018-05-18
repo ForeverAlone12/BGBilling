@@ -117,6 +117,14 @@ public class Antifraud extends GlobalScriptBase {
             throw new BGException("Ошибка подключения к БД в скрипте Antifroud\n" + ex.getMessage() + "\n" + ex);
         }
 
+        try {
+            users = getUsers();
+        } catch (SQLException ex) {
+            // logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
+            // logger.error(ex.getMessage(), ex);
+            throw new BGException("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n" + ex.getMessage() + "\n" + ex);
+        }
+
         ContractDao cd = new ContractDao(con, 0);
         Contract contract;
         while (!end.after(to)) {
@@ -144,14 +152,6 @@ public class Antifraud extends GlobalScriptBase {
 
             print("Количество необработанных звонков = " + calls.size());
             print("Количество данных трафика до обработки данных = " + traffic.size());
-
-            try {
-                users = getUsers();
-            } catch (SQLException ex) {
-                // logger.error("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n");
-                // logger.error(ex.getMessage(), ex);
-                throw new BGException("Не удалось извлечь данные  пользователях, которых нельзя блокировать\n" + ex.getMessage() + "\n" + ex);
-            }
 
             lock = 0;
 
